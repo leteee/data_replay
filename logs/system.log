@@ -1,0 +1,18 @@
+2025-08-17 23:46:55,849 [INFO] root: [Demo] Start demo pipeline for case1
+2025-08-17 23:46:55,852 [ERROR] PluginLoader: [PluginLoader] Module not found: modules.signals.demo_signal
+2025-08-17 23:46:55,853 [ERROR] PluginLoader: [PluginLoader] Module not found: modules.analysis.demo_overlay
+2025-08-17 23:46:55,854 [INFO] PluginLoader: [PluginLoader] Loaded quality.demo_check
+2025-08-17 23:46:55,854 [INFO] root: [DemoCheck] Running demo quality check
+2025-08-17 23:46:55,854 [INFO] root: [Demo] Demo pipeline finished for case1
+2025-08-17 23:53:37,402 [INFO] root: [Demo] Start demo pipeline for case1
+2025-08-17 23:53:37,405 [ERROR] PluginLoader: [PluginLoader] Module not found: modules.signals.demo_signal
+2025-08-17 23:53:37,406 [ERROR] PluginLoader: [PluginLoader] Module not found: modules.analysis.demo_overlay
+2025-08-17 23:53:37,408 [INFO] PluginLoader: [PluginLoader] Loaded quality.demo_check
+2025-08-17 23:53:37,408 [INFO] root: [DemoCheck] Running demo quality check
+2025-08-17 23:53:37,408 [INFO] root: [Demo] Demo pipeline finished for case1
+2025-08-17 23:54:44,551 [INFO] root: [Demo] Start demo pipeline for case1
+2025-08-17 23:54:44,553 [ERROR] PluginLoader: [PluginLoader] Module not found: modules.signals.demo_signal
+2025-08-17 23:54:44,554 [ERROR] PluginLoader: [PluginLoader] Module not found: modules.analysis.demo_overlay
+2025-08-17 23:54:44,556 [INFO] PluginLoader: [PluginLoader] Loaded quality.demo_check
+2025-08-17 23:54:44,556 [INFO] root: [DemoCheck] Running demo quality check
+2025-08-17 23:54:44,556 [INFO] root: [Demo] Demo pipeline finished for case1

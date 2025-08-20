@@ -1,0 +1,14 @@
+log_level: "DEBUG"
+sync_method: "resample"
+signals:
+  demo:
+    enabled: true
+    file: ./cases/case1/input/demo.csv
+analysis:
+  demo_overlay:
+    enabled: true
+quality:
+  demo_check:
+    enabled: true
+input_files:
+  demo: ./cases/case1/input/demo.csv
