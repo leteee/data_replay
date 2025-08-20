@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ===============================
-# 一键初始化完整项目并生成可跑 demo (含 __init__.py)
+# 一键初始化完整项目（PipelineRunner 版）
 # ===============================
 
 echo "=== 创建项目目录结构 ==="
@@ -21,9 +21,6 @@ touch utils/__init__.py
 # ===============================
 # 创建全局配置文件
 # ===============================
-echo "=== 创建配置文件 ==="
-
-# global.yaml
 cat > config/global.yaml <<EOL
 data_root: "./cases"
 log_level: "INFO"
@@ -59,27 +56,29 @@ EOL
 
 # case.yaml
 cat > cases/case1/case.yaml <<EOL
-log_level: "DEBUG"
-sync_method: "resample"
-signals:
-  demo:
+plugins:
+  - path: "modules.signals.demo_signal.DemoSignal"
     enabled: true
-    file: ./cases/case1/input/demo.csv
-analysis:
-  demo_overlay:
+    cfg:
+      length: 100
+      file: "cases/case1/input/demo.csv"
+
+  - path: "modules.analysis.demo_overlay.DemoOverlay"
     enabled: true
-quality:
-  demo_check:
+    cfg:
+      width: 640
+      height: 480
+      fps: 10
+      length: 100
+      output: "cases/case1/output/demo_video.avi"
+
+  - path: "modules.quality.demo_check.DemoCheck"
     enabled: true
-input_files:
-  demo: ./cases/case1/input/demo.csv
 EOL
 
 # ===============================
 # 创建 utils 脚本
 # ===============================
-echo "=== 创建 utils 脚本 ==="
-
 # config_manager.py
 cat > utils/config_manager.py <<'EOL'
 import yaml
@@ -156,12 +155,72 @@ class PluginLoader:
         except Exception as e:
             self.logger.error(f"[PluginLoader] Failed to load {module_path}: {e}")
             return None
+EOL
 
-    def list_plugins(self, module_type):
-        folder = self.plugin_dir / module_type
-        if not folder.exists():
-            return []
-        return [f.stem for f in folder.glob("*.py") if f.stem != "__init__"]
+# pipeline_runner.py
+cat > utils/pipeline_runner.py <<'EOL'
+import sys
+from pathlib import Path
+import importlib
+from utils.config_manager import ConfigManager
+from utils.logger import setup_logger
+from modules.datahub import DataHub
+
+PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+class PipelineRunner:
+    def __init__(self, case_cfg_path="cases/case1/case.yaml"):
+        self.cfg = ConfigManager(case_cfg=case_cfg_path)
+        self.case_name = Path(case_cfg_path).parent.name
+        self.logger = setup_logger(self.cfg, case_dir=f"{self.case_name}_demo")
+        self.hub = DataHub()
+        self.plugins = []
+
+    def load_plugins(self):
+        plugin_list = self.cfg.get("plugins", [])
+        for plugin_info in plugin_list:
+            path = plugin_info.get("path")
+            enabled = plugin_info.get("enabled", True)
+            cfg = plugin_info.get("cfg", {})
+            if not enabled:
+                self.logger.info(f"[PipelineRunner] Plugin {path} is disabled, skip")
+                continue
+            try:
+                mod_path, cls_name = path.rsplit(".", 1)
+                mod = importlib.import_module(mod_path)
+                cls = getattr(mod, cls_name)
+                instance = cls()
+                self.plugins.append({"instance": instance, "cfg": cfg, "name": cls_name})
+                self.logger.info(f"[PipelineRunner] Loaded plugin {path}")
+            except Exception as e:
+                self.logger.error(f"[PipelineRunner] Failed to load plugin {path}: {e}")
+
+    def run_all(self):
+        for plugin in self.plugins:
+            inst = plugin["instance"]
+            cfg = plugin["cfg"]
+            self.logger.info(f"[PipelineRunner] Running plugin {plugin['name']}")
+            if hasattr(inst, "load"):
+                inst.load(cfg.get("file", None), cfg, self.logger)
+                self.hub.add_signal(plugin['name'], inst)
+            elif hasattr(inst, "run"):
+                inst.run(self.hub, cfg, self.logger)
+
+    def run_plugin(self, plugin_name):
+        for plugin in self.plugins:
+            if plugin["name"] == plugin_name:
+                inst = plugin["instance"]
+                cfg = plugin["cfg"]
+                self.logger.info(f"[PipelineRunner] Running plugin {plugin_name} independently")
+                if hasattr(inst, "load"):
+                    inst.load(cfg.get("file", None), cfg, self.logger)
+                    self.hub.add_signal(plugin_name, inst)
+                elif hasattr(inst, "run"):
+                    inst.run(self.hub, cfg, self.logger)
+                return
+        self.logger.warning(f"[PipelineRunner] Plugin {plugin_name} not found")
 EOL
 
 # ===============================
@@ -180,7 +239,7 @@ class DataHub:
 EOL
 
 # ===============================
-# 创建插件模板
+# 创建插件示例
 # ===============================
 # base signal
 cat > modules/signals/base.py <<'EOL'
@@ -188,12 +247,11 @@ class BaseSignal:
     default_cfg = {}
     def load(self, file_path, cfg, logger):
         raise NotImplementedError
-
     def get_data(self, start=None, end=None):
         raise NotImplementedError
 EOL
 
-# demo signal: 生成模拟数据
+# demo signal
 cat > modules/signals/demo_signal.py <<'EOL'
 import csv
 import numpy as np
@@ -210,7 +268,6 @@ class DemoSignal(BaseSignal):
             writer.writeheader()
             for row in self.data:
                 writer.writerow(row)
-
     def get_data(self, start=None, end=None):
         return self.data
 EOL
@@ -223,7 +280,7 @@ class BaseAnalysis:
         raise NotImplementedError
 EOL
 
-# demo analysis: 回叠数据到黑色背景视频
+# demo overlay
 cat > modules/analysis/demo_overlay.py <<'EOL'
 import cv2
 import numpy as np
@@ -237,7 +294,7 @@ class DemoOverlay(BaseAnalysis):
         logger.info(f"[DemoOverlay] Creating demo video {cfg['output']}")
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
         out = cv2.VideoWriter(cfg["output"], fourcc, cfg["fps"], (cfg["width"], cfg["height"]))
-        signal = datahub.get("demo")
+        signal = datahub.get("DemoSignal")
         data = signal.get_data() if signal else []
         for i in range(cfg["length"]):
             frame = np.zeros((cfg["height"], cfg["width"],3), dtype=np.uint8)
@@ -256,7 +313,7 @@ class BaseCheck:
         raise NotImplementedError
 EOL
 
-# demo quality check
+# demo check
 cat > modules/quality/demo_check.py <<'EOL'
 from .base_check import BaseCheck
 
@@ -267,50 +324,84 @@ class DemoCheck(BaseCheck):
 EOL
 
 # ===============================
-# 创建 demo_run.py
+# demo_run.py
 # ===============================
 cat > demo_run.py <<'EOL'
-from utils.config_manager import ConfigManager
-from utils.logger import setup_logger
-from utils.plugin_loader import PluginLoader
-from modules.datahub import DataHub
-from pathlib import Path
-
-def run_demo(case_path="cases/case1/case.yaml"):
-    cfg = ConfigManager(case_cfg=case_path)
-    case_name = Path(case_path).parent.name
-    logger = setup_logger(cfg, case_dir=f"{case_name}_demo")
-    logger.info(f"[Demo] Start demo pipeline for {case_name}")
-
-    hub = DataHub()
-    loader = PluginLoader()
-
-    # 加载 demo 信号插件
-    mod = loader.load_module("signals", "demo_signal")
-    signal_cfg = cfg.get("signals", {}).get("demo", {})
-    if mod and signal_cfg.get("enabled", True):
-        instance = mod.DemoSignal()
-        instance.load("cases/case1/input/demo.csv", signal_cfg, logger)
-        hub.add_signal("demo", instance)
-
-    # 执行 demo 分析插件
-    mod = loader.load_module("analysis", "demo_overlay")
-    analysis_cfg = cfg.get("analysis", {}).get("demo_overlay", {})
-    if mod and analysis_cfg.get("enabled", True):
-        mod.DemoOverlay().run(hub, analysis_cfg, logger)
-
-    # 执行 demo 质量检查插件
-    mod = loader.load_module("quality", "demo_check")
-    quality_cfg = cfg.get("quality", {}).get("demo_check", {})
-    if mod and quality_cfg.get("enabled", True):
-        mod.DemoCheck().run(hub, quality_cfg, logger)
-
-    logger.info(f"[Demo] Demo pipeline finished for {case_name}")
+from utils.pipeline_runner import PipelineRunner
+import sys
 
 if __name__ == "__main__":
-    import sys
-    case_path = sys.argv[1] if len(sys.argv) > 1 else "cases/case1/case.yaml"
-    run_demo(case_path)
+    case_cfg = sys.argv[1] if len(sys.argv) > 1 else "cases/case1/case.yaml"
+    runner = PipelineRunner(case_cfg)
+    runner.load_plugins()
+    runner.run_all()
 EOL
 
-echo "=== 初始化完成，执行 demo_run.py 可以生成 demo 视频 ==="
+# ===============================
+# 空输入文件
+# ===============================
+touch cases/case1/input/demo.csv
+
+# ===============================
+# README
+# ===============================
+cat > README.md <<EOL
+# 视频回叠系统 Demo
+
+## 目录结构
+
+- modules/: 插件目录 (signals, analysis, quality)
+- utils/: 工具类和 PipelineRunner
+- config/: 全局和 case 配置
+- cases/: 输入输出案例
+- logs/: 日志目录
+
+## 使用方法
+
+1. 初始化项目：
+
+\`\`\`bash
+bash setup_full_demo.sh
+\`\`\`
+
+2. 运行 demo：
+
+\`\`\`bash
+python3 demo_run.py
+\`\`\`
+
+- 输出视频：cases/case1/output/demo_video.avi  
+- 日志：logs/case1_demo/pipeline.log
+EOL
+
+echo "=== 初始化完成，执行 python3 demo_run.py 可以生成 demo 视频 ==="
+
+#!/bin/bash
+
+echo "=== 生成 requirements.txt ==="
+cat > requirements.txt <<EOL
+numpy
+opencv-python
+pyyaml
+EOL
+
+echo "=== 生成 .gitignore ==="
+cat > .gitignore <<EOL
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+logs/
+
+# Output video
+cases/*/output/
+
+# Virtual environment
+venv/
+env/
+EOL
+
+echo "=== requirements.txt 和 .gitignore 生成完成 ==="

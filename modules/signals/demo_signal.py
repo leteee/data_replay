@@ -13,6 +13,5 @@ class DemoSignal(BaseSignal):
             writer.writeheader()
             for row in self.data:
                 writer.writerow(row)
-
     def get_data(self, start=None, end=None):
         return self.data

@@ -1,14 +1,18 @@
-log_level: "DEBUG"
-sync_method: "resample"
-signals:
-  demo:
+plugins:
+  - path: "modules.signals.demo_signal.DemoSignal"
     enabled: true
-    file: ./cases/case1/input/demo.csv
-analysis:
-  demo_overlay:
+    cfg:
+      length: 100
+      file: "cases/case1/input/demo.csv"
+
+  - path: "modules.analysis.demo_overlay.DemoOverlay"
     enabled: true
-quality:
-  demo_check:
+    cfg:
+      width: 640
+      height: 480
+      fps: 10
+      length: 100
+      output: "cases/case1/output/demo_video.avi"
+
+  - path: "modules.quality.demo_check.DemoCheck"
     enabled: true
-input_files:
-  demo: ./cases/case1/input/demo.csv

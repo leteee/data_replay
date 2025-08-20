@@ -10,7 +10,7 @@ class DemoOverlay(BaseAnalysis):
         logger.info(f"[DemoOverlay] Creating demo video {cfg['output']}")
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
         out = cv2.VideoWriter(cfg["output"], fourcc, cfg["fps"], (cfg["width"], cfg["height"]))
-        signal = datahub.get("demo")
+        signal = datahub.get("DemoSignal")
         data = signal.get_data() if signal else []
         for i in range(cfg["length"]):
             frame = np.zeros((cfg["height"], cfg["width"],3), dtype=np.uint8)

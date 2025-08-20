@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+logs/
+
+# Output video
+cases/*/output/
+
+# Virtual environment
+venv/
+env/

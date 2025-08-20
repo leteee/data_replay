@@ -19,9 +19,3 @@ class PluginLoader:
         except Exception as e:
             self.logger.error(f"[PluginLoader] Failed to load {module_path}: {e}")
             return None
-
-    def list_plugins(self, module_type):
-        folder = self.plugin_dir / module_type
-        if not folder.exists():
-            return []
-        return [f.stem for f in folder.glob("*.py") if f.stem != "__init__"]
