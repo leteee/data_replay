@@ -15,6 +15,7 @@ handlers:
     level: DEBUG
     formatter: standard
     filename: logs/system.log
+    encoding: utf-8 # Added encoding
 
 root:
   level: DEBUG

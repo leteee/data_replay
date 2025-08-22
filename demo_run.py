@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from utils.pipeline_runner import PipelineRunner
+from core.pipeline_runner import PipelineRunner
 
 def main():
     """

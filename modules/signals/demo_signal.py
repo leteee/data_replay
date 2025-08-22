@@ -1,17 +1,16 @@
 
 import pandas as pd
 from modules.base_plugin import BasePlugin
-from utils.logger import get_logger
-
-logger = get_logger(__name__)
 
 class DemoSignal(BasePlugin):
     def __init__(self, config):
-        self.config = config
+        super().__init__(config) # Call parent constructor to set self.config
 
-    def run(self, data_hub):
-        """Generates sample signal data and adds it to the data_hub."""
-        logger.info(f"Running DemoSignal with config: {self.config}")
+    def run(self, context):
+        # Store context and logger for property access
+        super().run(context) 
+
+        self.logger.info(f"Running DemoSignal with config: {self.config}")
         
         # Generate some sample data
         num_rows = self.config.get('num_rows', 10)
@@ -23,11 +22,11 @@ class DemoSignal(BasePlugin):
         }
         df = pd.DataFrame(data)
         
-        logger.info(f"Generated {num_rows} rows of sample data.")
+        self.logger.info(f"Generated {num_rows} rows of sample data.")
         
-        # Put the generated DataFrame into data_hub['data']
-        data_hub['data'] = df
+        # Put the generated DataFrame into context['data']
+        context['data'] = df
 
-        # This plugin doesn't produce specific results to be stored in data_hub['results']
+        # This plugin doesn't produce specific results to be stored in context['results']
         # but it populates the main data payload.
-        return data_hub
+        return context

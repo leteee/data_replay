@@ -1,6 +1,9 @@
 # cases/case1/case.yaml
 # 这是一个示例配置文件，用于演示新的流水线功能。
 
+# 定义案例的初始输入数据文件，供独立运行的插件使用
+input_data_file: "input/demo.csv"
+
 # 定义所有产出物（如持久化的中间文件）的存放目录
 # 这个目录是相对于本文件所在目录的
 artifacts_directory: "run_outputs"
