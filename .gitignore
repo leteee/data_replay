@@ -13,3 +13,4 @@ cases/*/output/
 # Virtual environment
 venv/
 env/
+.venv/

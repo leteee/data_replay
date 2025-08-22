@@ -1,18 +1,28 @@
-plugins:
-  - path: "modules.signals.demo_signal.DemoSignal"
-    enabled: true
-    cfg:
-      length: 100
-      file: "cases/case1/input/demo.csv"
+# cases/case1/case.yaml
+# 这是一个示例配置文件，用于演示新的流水线功能。
 
-  - path: "modules.analysis.demo_overlay.DemoOverlay"
-    enabled: true
-    cfg:
-      width: 640
-      height: 480
-      fps: 10
-      length: 100
-      output: "cases/case1/output/demo_video.avi"
+# 定义所有产出物（如持久化的中间文件）的存放目录
+# 这个目录是相对于本文件所在目录的
+artifacts_directory: "run_outputs"
 
-  - path: "modules.quality.demo_check.DemoCheck"
-    enabled: true
+# 定义流水线，按顺序执行
+pipeline:
+  - plugin: "DemoSignal" # 第一个插件：生成一个信号
+    config:
+      # 这是传递给 DemoSignal 插件的特定配置
+      key: "initial_data"
+
+  - plugin: "DemoCheck"  # 第二个插件：进行质量检查
+    config:
+      # DemoCheck 需要检查的列和最大值
+      column: "value"
+      max_value: 150
+    persist: true # 我们希望保存质检后的数据，以便复查
+    # 未指定 output_path，将使用默认名称，如: run_outputs/step_1_DemoCheck.parquet
+
+  - plugin: "DemoOverlay" # 第三个插件：进行图像叠加
+    config:
+      # DemoOverlay 的配置
+      overlay_text: "Processed"
+    persist: true
+    output_path: "images/final_overlay.png" # 指定一个自定义的输出路径和文件名

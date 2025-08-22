@@ -1,0 +1,12 @@
+# modules/quality/demo_check.yaml
+# DemoCheck 插件的默认配置文件
+
+# 默认检查的列
+column: "value"
+
+# 默认的最大值
+max_value: 100
+
+# 声明一个默认的输入规则文件
+# 路径是相对于 case 目录的
+input_rules_file: "quality_rules.json"
