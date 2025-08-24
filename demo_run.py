@@ -23,7 +23,7 @@ def main():
     # However, for logging before that, we can do a basic setup
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 
-    case_path = Path(args.case)
+    case_path = Path('cases') / args.case
     
     # It's better to get the logger instance after basicConfig
     logger = logging.getLogger(__name__)
@@ -43,12 +43,12 @@ def main():
     # Initialize and run the pipeline
     try:
         runner = PipelineRunner(case_path=str(case_path), cli_args=cli_overrides)
-        final_context = runner.run()
+        final_data_hub = runner.run()
 
-        logger.info("\n====== Final Context Results ======")
+        logger.info("\n====== Final DataHub State ======")
         import json
         # Use logger to output the final results
-        logger.info(json.dumps(final_context.get("results", {}), indent=2))
+        logger.info(json.dumps(final_data_hub.summary(), indent=2))
         logger.info("=====================================")
 
     except Exception as e:

@@ -1,29 +1,25 @@
-
-import pandas as pd
 from modules.base_plugin import BasePlugin
+from core.data_hub import DataHub
 
 class InitialDataReader(BasePlugin):
     """
-    A specialized plugin to load the very first dataset into the pipeline context.
+    A specialized plugin to load the very first dataset into the pipeline
+    as defined in the `data_sources` section of the case config.
     """
 
-    def run(self, context: dict) -> dict:
-        super().run(context)
+    def run(self, data_hub: DataHub):
+        super().run(data_hub)
 
-        file_path = self.config.get('path')
-        if not file_path:
-            raise ValueError("Configuration for InitialDataReaderPlugin must contain a 'path' key.")
+        # This plugin's job is to load the data specified in its "outputs"
+        # The data_hub.get() method will trigger the lazy loading from the file
+        # specified in the data_sources config.
+        output_names = self.config.get("outputs", [])
+        if not output_names:
+            self.logger.warning("No outputs defined for InitialDataReader. Nothing to load.")
+            return
 
-        # The path from config might be relative to the project root, 
-        # so we construct the full path from the case_path's parent (the project root).
-        full_path = self.case_path.parent.parent / file_path
-
-        self.logger.info(f"Loading initial data from: {full_path}")
-        
-        # Use the helper from BasePlugin to load the data
-        df = self.load_dataframe(str(full_path))
-        
-        self.logger.info(f"Successfully loaded {len(df)} records.")
-
-        context['data'] = df
-        return context
+        for data_name in output_names:
+            self.logger.info(f"Triggering initial load for data source: '{data_name}'")
+            # The get method will load the data and cache it in the hub.
+            # We don't need to do anything with the returned dataframe here.
+            data_hub.get(data_name)

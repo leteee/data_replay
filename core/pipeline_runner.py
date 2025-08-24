@@ -3,74 +3,54 @@ import importlib.util
 import logging
 from pathlib import Path
 import yaml
-import pandas as pd
 
 from core.config_manager import ConfigManager
 from core.logger import setup_logging
+from core.data_hub import DataHub
 
 class PipelineRunner:
     """
     The main orchestrator for running data replay pipelines.
     It reads a case configuration, discovers and loads plugins, and executes
-    the pipeline steps sequentially, handling data persistence as configured.
+    the pipeline steps sequentially.
     """
     def __init__(self, case_path: str, cli_args: dict = None):
         self.case_path = Path(case_path)
-        self.project_root = self.case_path.parent.parent # Assumes cases/case_name structure
-        
-        # 1. Set up logging right away
+        self.project_root = self.case_path.parent.parent
+
         setup_logging(case_name=self.case_path.name)
         self.logger = logging.getLogger(__name__)
 
-        # 2. Initialize context and config manager
-        self.context = {"results": {}}
-        self.config_manager = ConfigManager(project_root=str(self.project_root), cli_args=cli_args)
-
-        # 3. Load case and discover plugins
         self.case_config = load_yaml(self.case_path / "case.yaml")
+        
+        data_sources = self.case_config.get("data_sources", {})
+        self.data_hub = DataHub(case_path=self.case_path, data_sources=data_sources)
+        
+        self.config_manager = ConfigManager(project_root=str(self.project_root), cli_args=cli_args)
         self.plugin_map = self._find_plugins()
-        self.logger.info(f"发现 {len(self.plugin_map)} 个可用插件。")
+        self.logger.info(f"Found {len(self.plugin_map)} available plugins.")
 
     def _find_plugins(self) -> dict:
-        """
-        Scans the 'modules' directory to build a map of available plugins.
-        The map links a simple class name to its file path and module path.
-        """
         plugin_map = {}
         modules_root = self.project_root / "modules"
         for py_file in modules_root.rglob("*.py"):
             if py_file.name.startswith(("__", "base_")):
                 continue
             
-            # Convention: ClassName is PascalCase version of file_name.py
             class_name = py_file.stem.replace("_", " ").title().replace(" ", "")
-            
-            # Convention: module.path is derived from file path
             module_path = ".".join(py_file.relative_to(self.project_root).with_suffix('').parts)
-
-            plugin_map[class_name] = {
-                "file_path": str(py_file),
-                "module_path": module_path
-            }
+            plugin_map[class_name] = {"file_path": str(py_file), "module_path": module_path}
         return plugin_map
 
     def _load_plugin_class(self, plugin_identifier: str):
-        """
-        Loads a plugin class using either a simple name or a full module path.
-        Returns the PluginClass and its file_path.
-        """
         if "." in plugin_identifier:
-            # Full path provided (e.g., modules.quality.demo_check.DemoCheck)
             module_path, class_name = plugin_identifier.rsplit('.', 1)
             module = importlib.import_module(module_path)
-            # We need the file path to load the default config
-            # This assumes the module path directly corresponds to a file path
             file_path = str(self.project_root / Path(module_path.replace('.', '/')) / f"{class_name.lower()}.py")
             return getattr(module, class_name), file_path
         else:
-            # Simple name provided (e.g., DemoCheck)
             if plugin_identifier not in self.plugin_map:
-                raise ValueError(f"在 {self.project_root / 'modules'} 中找不到插件: {plugin_identifier}")
+                raise ValueError(f"Plugin not found in 'modules': {plugin_identifier}")
             
             plugin_info = self.plugin_map[plugin_identifier]
             file_path = plugin_info["file_path"]
@@ -85,19 +65,17 @@ class PipelineRunner:
         Executes the entire pipeline as defined in the case configuration.
         """
         pipeline_steps = self.case_config.get("pipeline", [])
-        self.logger.info(f"开始执行流水线，共 {len(pipeline_steps)} 个步骤。")
+        self.logger.info(f"Starting pipeline execution with {len(pipeline_steps)} steps.")
 
         for i, step_config in enumerate(pipeline_steps):
             plugin_identifier = step_config["plugin"]
-            self.logger.info(f"\n--- 步骤 {i+1}/{len(pipeline_steps)}: 执行插件 [{plugin_identifier}] ---")
+            self.logger.info(f"\n--- Step {i+1}/{len(pipeline_steps)}: Executing Plugin [{plugin_identifier}] ---")
 
-            # 1. Dynamically load the plugin class and get its file path
             PluginClass, plugin_file_path = self._load_plugin_class(plugin_identifier)
 
-            # 2. Get final config for this plugin instance
+            # Merge the plugin-specific config from the pipeline step into the final config
+            # This allows overriding default plugin configs per step
             case_override_config = step_config.get("config", {})
-            
-            # Inject case_path into the config for the plugin
             case_override_config['case_path'] = str(self.case_path)
 
             final_config = self.config_manager.get_plugin_config(
@@ -105,35 +83,19 @@ class PipelineRunner:
                 case_config_override=case_override_config
             )
 
-            # 3. Inject logger into context for the plugin
-            self.context['logger'] = logging.getLogger(plugin_identifier) # Logger named after the plugin
+            # Add inputs and outputs from the step config to the final_config
+            # so the plugin can access them
+            if 'inputs' in step_config:
+                final_config['inputs'] = step_config['inputs']
+            if 'outputs' in step_config:
+                final_config['outputs'] = step_config['outputs']
 
-            # 4. Instantiate and run the plugin
+            # Instantiate and run the plugin, passing the DataHub
             plugin_instance = PluginClass(config=final_config)
-            self.context = plugin_instance.run(self.context)
+            plugin_instance.run(self.data_hub)
 
-            # 5. Handle persistence
-            if step_config.get("persist", False):
-                output_path_str = step_config.get("output_path")
-                if not output_path_str:
-                    self.logger.error(f"插件 {plugin_identifier} 被设置为持久化，但未提供 'output_path'。")
-                    continue
-
-                output_path = Path(output_path_str)
-                if not output_path.is_absolute():
-                    output_path = self.case_path / output_path
-                
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-
-                if isinstance(self.context.get("data"), pd.DataFrame):
-                    self.context["data"].to_parquet(output_path)
-                    self.logger.info(f"结果已持久化到: {output_path}")
-                    self.context["data"] = str(output_path)
-                else:
-                    self.logger.warning(f"插件 {plugin_identifier} 被设置为持久化，但其输出 context['data'] 不是DataFrame。")
-
-        self.logger.info("\n--- 流水线执行完毕 ---")
-        return self.context
+        self.logger.info("\n--- Pipeline execution finished ---")
+        return self.data_hub
 
 def load_yaml(file_path):
     path = Path(file_path)

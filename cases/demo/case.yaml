@@ -1,23 +1,26 @@
 case_name: "KalmanFilterCarTracking"
 
-global_config: # These settings are available to all plugins
-  case_path: "cases/car"
+# Centralized definition of all data sources and their persistence paths
+data_sources:
+  raw_car_data:
+    path: "cases/demo/car_info.csv"
+  predicted_car_data:
+    path: "intermediate/predicted_data.parquet"
 
 pipeline:
   - plugin: InitialDataReader
-    config:
-      format: "csv"
-      path: "cases/demo/car_info.csv"
+    outputs: ["raw_car_data"]
 
   - plugin: KalmanFilter
-    module: modules.prediction.kalman_filter
+    inputs: ["raw_car_data"]
+    outputs: ["predicted_car_data"]
     config:
       dt: 0.02
       process_noise: 0.1
       measurement_noise: 0.5
 
   - plugin: Plotter
-    module: modules.visualization.plotter_plugin
+    inputs: ["predicted_car_data"]
     config:
       output_dir: "car_images"
 
