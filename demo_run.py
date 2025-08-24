@@ -11,14 +11,16 @@ def main():
         "--case",
         type=str,
         required=True,
-        help="Path to the case directory (e.g., 'cases/case1')"
+        help="Path to the case directory (e.g., 'cases/demo')"
     )
     # In the future, we can add --set for CLI config overrides
     # parser.add_argument("--set", nargs='*', help="Set config values from CLI")
 
     args = parser.parse_args()
 
-    case_path = Path(args.case)
+    case_path = Path('cases') / args.case
+    print(f"[DEBUG] Current Working Directory: {Path.cwd()}")
+    print(f"[DEBUG] Resolved Case Path: {case_path.resolve()}")
     if not case_path.is_dir():
         print(f"Error: Case path not found or is not a directory: {case_path}")
         return

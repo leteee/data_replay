@@ -1,0 +1,3 @@
+# Default configuration for InitialDataReader plugin
+format: "csv"
+path: "default_data.csv"

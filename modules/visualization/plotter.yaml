@@ -1,0 +1,2 @@
+# Default configuration for Plotter plugin
+output_dir: "plots"

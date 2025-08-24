@@ -1,7 +1,7 @@
-import yaml
 import importlib
 import importlib.util
 from pathlib import Path
+import yaml
 import pandas as pd
 import logging # Import logging module
 
@@ -30,10 +30,6 @@ class PipelineRunner:
         
         # Load the case configuration
         self.case_config = load_yaml(self.case_path / "case.yaml")
-        self.artifacts_dir = self.case_path / self.case_config.get("artifacts_directory", "run_outputs")
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-        
-        self.logger.info(f"产出物将保存在: {self.artifacts_dir}")
 
         # Discover all available plugins
         self.plugin_map = self._find_plugins()
@@ -124,10 +120,13 @@ class PipelineRunner:
             if step_config.get("persist", False):
                 output_path_str = step_config.get("output_path")
                 if not output_path_str:
-                    plugin_name = plugin_identifier.rsplit('.', 1)[-1]
-                    output_path_str = f"step_{i}_{plugin_name}.parquet"
+                    self.logger.error(f"插件 {plugin_identifier} 被设置为持久化，但未提供 'output_path'。")
+                    continue
+
+                output_path = Path(output_path_str)
+                if not output_path.is_absolute():
+                    output_path = self.case_path / output_path
                 
-                output_path = self.artifacts_dir / output_path_str
                 output_path.parent.mkdir(parents=True, exist_ok=True)
 
                 if isinstance(self.context.get("data"), pd.DataFrame):

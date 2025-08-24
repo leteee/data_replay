@@ -11,6 +11,7 @@ logs/
 cases/*/output/
 
 # Virtual environment
-venv/
 env/
 .venv/
+venv/
+cases/

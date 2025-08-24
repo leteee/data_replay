@@ -1,0 +1,28 @@
+case_name: "KalmanFilterCarTracking"
+
+global_config: # These settings are available to all plugins
+  case_path: "cases/car"
+
+pipeline:
+  - plugin: InitialDataReader
+    config:
+      format: "csv"
+      path: "cases/demo/car_info.csv"
+
+  - plugin: KalmanFilter
+    module: modules.prediction.kalman_filter
+    config:
+      dt: 0.02
+      process_noise: 0.1
+      measurement_noise: 0.5
+
+  - plugin: Plotter
+    module: modules.visualization.plotter_plugin
+    config:
+      output_dir: "car_images"
+
+  - plugin: VideoCreator
+    config:
+      input_dir: "car_images"
+      output_path: "car_tracking_video.mp4"
+      fps: 10
