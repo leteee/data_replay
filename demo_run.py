@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pathlib import Path
 from core.pipeline_runner import PipelineRunner
 
@@ -18,14 +19,23 @@ def main():
 
     args = parser.parse_args()
 
-    case_path = Path('cases') / args.case
-    print(f"[DEBUG] Current Working Directory: {Path.cwd()}")
-    print(f"[DEBUG] Resolved Case Path: {case_path.resolve()}")
+    # The PipelineRunner will set up the logging, so we can use it after initialization
+    # However, for logging before that, we can do a basic setup
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+
+    case_path = Path(args.case)
+    
+    # It's better to get the logger instance after basicConfig
+    logger = logging.getLogger(__name__)
+
+    logger.debug(f"Current Working Directory: {Path.cwd()}")
+    logger.debug(f"Resolved Case Path: {case_path.resolve()}")
+
     if not case_path.is_dir():
-        print(f"Error: Case path not found or is not a directory: {case_path}")
+        logger.error(f"Case path not found or is not a directory: {case_path}")
         return
 
-    print(f"====== Running Case: {case_path.name} ======")
+    logger.info(f"====== Running Case: {case_path.name} ======")
     
     # TODO: Parse CLI args for config overrides
     cli_overrides = {}
@@ -33,19 +43,16 @@ def main():
     # Initialize and run the pipeline
     try:
         runner = PipelineRunner(case_path=str(case_path), cli_args=cli_overrides)
-        final_data_hub = runner.run()
+        final_context = runner.run()
 
-        print("\n====== Final Data Hub Results ======")
-        # Pretty print the results dictionary
+        logger.info("\n====== Final Context Results ======")
         import json
-        print(json.dumps(final_data_hub.get("results", {}), indent=2))
-        print("=====================================")
+        # Use logger to output the final results
+        logger.info(json.dumps(final_context.get("results", {}), indent=2))
+        logger.info("=====================================")
 
     except Exception as e:
-        print(f"\nAn error occurred during pipeline execution: {e}")
-        # In a real application, you'd use a logger and possibly print a traceback
-        import traceback
-        traceback.print_exc()
+        logger.error(f"\nAn error occurred during pipeline execution: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

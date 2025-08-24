@@ -3,26 +3,27 @@ import logging.config
 import yaml
 import os
 
-def setup_logger(cfg, case_dir=None):
+def setup_logging(case_name=None):
+    """Set up logging configuration."""
     # Ensure the base logs directory exists
     os.makedirs("logs", exist_ok=True)
 
-    with open("config/logging.yaml", "r", encoding='utf-8') as f: # Ensure reading config.yaml with utf-8
-        config = yaml.safe_load(f.read())
+    # Load base logging configuration
+    with open("config/logging.yaml", "r", encoding='utf-8') as f:
+        config = yaml.safe_load(f)
     logging.config.dictConfig(config)
 
-    logger = logging.getLogger()
-    if case_dir:
-        os.makedirs(os.path.join("logs", case_dir), exist_ok=True)
-        # Explicitly set encoding for FileHandler
-        file_handler = logging.FileHandler(os.path.join("logs", case_dir, "pipeline.log"), mode="w", encoding='utf-8')
-        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        # Remove existing handlers to prevent duplicate logs if setup_logger is called multiple times
-        if logger.hasHandlers():
-            logger.handlers.clear()
-        logger.addHandler(file_handler)
-    return logger
+    # If a case name is provided, add a specific handler for it
+    if case_name:
+        case_log_dir = os.path.join("logs", case_name)
+        os.makedirs(case_log_dir, exist_ok=True)
+        case_log_file = os.path.join(case_log_dir, "pipeline.log")
 
-def get_logger(name):
-    """Returns a logger instance for a given name."""
-    return logging.getLogger(name)
+        # Create a file handler for the case
+        file_handler = logging.FileHandler(case_log_file, mode="w", encoding='utf-8')
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.DEBUG)
+
+        # Add the handler to the root logger
+        logging.getLogger().addHandler(file_handler)

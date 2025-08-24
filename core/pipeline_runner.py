@@ -1,11 +1,12 @@
 import importlib
 import importlib.util
+import logging
 from pathlib import Path
 import yaml
 import pandas as pd
 
 from core.config_manager import ConfigManager
-from core.logger import setup_logger, get_logger # Import get_logger
+from core.logger import setup_logging
 
 class PipelineRunner:
     """
@@ -14,23 +15,19 @@ class PipelineRunner:
     the pipeline steps sequentially, handling data persistence as configured.
     """
     def __init__(self, case_path: str, cli_args: dict = None):
-        # 1. Get a basic logger immediately for early logging
-        self.logger = get_logger(__name__)
-
         self.case_path = Path(case_path)
         self.project_root = self.case_path.parent.parent # Assumes cases/case_name structure
-        self.context = {"results": {}} # Initialize the context
+        
+        # 1. Set up logging right away
+        setup_logging(case_name=self.case_path.name)
+        self.logger = logging.getLogger(__name__)
 
-        # Initialize the configuration manager for this run
+        # 2. Initialize context and config manager
+        self.context = {"results": {}}
         self.config_manager = ConfigManager(project_root=str(self.project_root), cli_args=cli_args)
 
-        # 2. Setup global logger based on config (now that config_manager is ready)
-        setup_logger(self.config_manager.global_config.get('logging', {}), self.case_path.name)
-        
-        # Load the case configuration
+        # 3. Load case and discover plugins
         self.case_config = load_yaml(self.case_path / "case.yaml")
-
-        # Discover all available plugins
         self.plugin_map = self._find_plugins()
         self.logger.info(f"发现 {len(self.plugin_map)} 个可用插件。")
 
@@ -109,7 +106,7 @@ class PipelineRunner:
             )
 
             # 3. Inject logger into context for the plugin
-            self.context['logger'] = get_logger(plugin_identifier) # Logger named after the plugin
+            self.context['logger'] = logging.getLogger(plugin_identifier) # Logger named after the plugin
 
             # 4. Instantiate and run the plugin
             plugin_instance = PluginClass(config=final_config)
