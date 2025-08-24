@@ -42,11 +42,13 @@ data_replay/
 1.  **Choose a Template**: Look inside the `templates/` directory for a suitable case template (e.g., `car_tracking_case.yaml`).
 2.  **Set up the Case**: Copy the chosen template into a case directory (e.g., `cases/demo/`).
 3.  **Rename the Template**: Rename the copied file to `case.yaml`.
-4.  **Run the Pipeline**: Execute the `demo_run.py` script, pointing to the case directory.
+4.  **Run the Pipeline**: Execute the `demo_run.py` script, providing the name of the case directory.
 
+   For example, to run the `demo` case:
    ```bash
-   python demo_run.py --case cases/demo
+   python demo_run.py --case demo
    ```
+   This will execute the pipeline defined in `cases/demo/case.yaml`.
 
 ## How to Create a Plugin
 

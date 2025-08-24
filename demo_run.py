@@ -12,7 +12,7 @@ def main():
         "--case",
         type=str,
         required=True,
-        help="Path to the case directory (e.g., 'cases/demo')"
+        help="Name of the case directory under 'cases/' (e.g., 'demo')"
     )
     # In the future, we can add --set for CLI config overrides
     # parser.add_argument("--set", nargs='*', help="Set config values from CLI")
