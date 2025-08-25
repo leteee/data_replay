@@ -15,7 +15,7 @@ class PipelineRunner:
     the pipeline steps sequentially.
     """
     def __init__(self, case_path: str, cli_args: dict = None):
-        self.case_path = Path(case_path)
+        self.case_path = Path(case_path).resolve()
         self.project_root = self.case_path.parent.parent
 
         setup_logging(case_name=self.case_path.name)
