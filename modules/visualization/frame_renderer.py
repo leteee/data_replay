@@ -65,14 +65,14 @@ class FrameRenderer(BasePlugin):
             img = Image.open(image_path).convert('RGB')
             draw = ImageDraw.Draw(img)
 
+            radius = 8 # Increase radius for better visibility
+
             # Draw ground truth position (e.g., a green circle)
             gx, gy = row['true_x'], row['true_y']
-            radius = 6
             draw.ellipse([(gx - radius, gy - radius), (gx + radius, gy + radius)], fill='green', outline='green')
 
             # Draw predicted position (e.g., a red circle)
             px, py = row['predicted_x'], row['predicted_y']
-            radius = 6
             draw.ellipse([(px - radius, py - radius), (px + radius, py + radius)], fill='red', outline='red')
 
             # Add a legend

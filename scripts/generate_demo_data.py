@@ -52,7 +52,8 @@ def generate_data():
     steering_profile_deg = 15 * np.sin(np.linspace(0, 2 * np.pi, NUM_FRAMES))
 
     # Calculate trajectory from profiles
-    positions = [np.array([50.0, 450.0])]
+    initial_pos = np.array([50.0, 300.0])
+    positions = [initial_pos]
     directions_rad = [np.deg2rad(-10)]
 
     for i in range(1, NUM_FRAMES):
@@ -90,8 +91,8 @@ def generate_data():
     for i, row in ground_truth_df.iterrows():
         img = Image.new('RGB', IMAGE_SIZE, color='black')
         draw = ImageDraw.Draw(img)
-        for x_grid in range(0, IMAGE_SIZE[0], 50): draw.line([(x_grid, 0), (x_grid, IMAGE_SIZE[1])], fill=(40, 40, 40))
-        for y_grid in range(0, IMAGE_SIZE[1], 50): draw.line([(0, y_grid), (IMAGE_SIZE[0], y_grid)], fill=(40, 40, 40))
+        for x_grid in range(0, IMAGE_SIZE[0], 50): draw.line([(x_grid, 0), (x_grid, IMAGE_SIZE[1])], fill=(50, 50, 50))
+        for y_grid in range(0, IMAGE_SIZE[1], 50): draw.line([(0, y_grid), (IMAGE_SIZE[0], y_grid)], fill=(50, 50, 50))
         
         frame_path_rel = os.path.join("raw_data", "frames", f"{i:04d}.png")
         img.save(os.path.join(CASE_DIR, frame_path_rel))
@@ -116,6 +117,13 @@ def generate_data():
     latent_df.dropna(inplace=True)
     
     latent_measurements_df = latent_df[['timestamp', 'x', 'y', 'vehicle_speed', 'steering_wheel_angle']]
+
+    # Add noise to measurements to make the simulation more realistic
+    noise_std_dev = 2.5 # pixels
+    latent_measurements_df['x'] += np.random.normal(0, noise_std_dev, len(latent_measurements_df))
+    latent_measurements_df['y'] += np.random.normal(0, noise_std_dev, len(latent_measurements_df))
+    print(f"Added measurement noise with std dev: {noise_std_dev}")
+
     latent_measurements_df.to_csv(LATENT_CSV_PATH, index=False, float_format='%.3f')
     print(f"Generated latent measurements: {LATENT_CSV_PATH}")
     print("--- Demo data generation complete! ---")
