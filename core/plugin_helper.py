@@ -5,94 +5,119 @@ from pathlib import Path
 import sys
 import inspect
 import yaml
+import importlib
+import pkgutil
 
 # To import from the parent directory (core), we adjust the path
-# This will be cleaner after the src-layout refactor
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
+import modules
 from core.config_manager import ConfigManager
 from core.data_hub import DataHub
 from modules.base_plugin import BasePlugin
 
-def run_plugin_standalone(plugin_class: type[BasePlugin]):
+logger = logging.getLogger(__name__)
+
+def find_plugin_class(plugin_name: str) -> type[BasePlugin] | None:
     """
-    A generic helper function to run a plugin standalone, adhering to the project's design.
-
-    It uses the --case argument to get the case context and reuses ConfigManager
-    and DataHub to ensure behavior is consistent with a full pipeline run.
-
+    Scans the 'modules' directory to find a plugin class by its name.
     Args:
-        plugin_class: The plugin class to run (e.g., KalmanFilter).
+        plugin_name: The string name of the plugin class to find.
+    Returns:
+        The plugin class type if found, otherwise None.
     """
-    parser = argparse.ArgumentParser(
-        description=f"Standalone runner for {plugin_class.__name__}"
-    )
-    parser.add_argument(
-        "--case",
-        required=True,
-        help="Name of the case directory under 'cases/' (e.g., 'demo')"
-    )
-    args = parser.parse_args()
+    for importer, modname, ispkg in pkgutil.walk_packages(path=modules.__path__,
+                                                          prefix=modules.__name__+'.',
+                                                          onerror=lambda x: None):
+        module = importlib.import_module(modname)
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if name == plugin_name and issubclass(obj, BasePlugin) and obj is not BasePlugin:
+                logger.info(f"Found plugin class '{plugin_name}' in module '{modname}'")
+                return obj
+    logger.error(f"Plugin class '{plugin_name}' not found.")
+    return None
 
-    # --- 1. Initialize Environment ---
-    case_path = Path('cases') / args.case
-    project_root_path = Path.cwd()
-    plugin_file_path = inspect.getfile(plugin_class)
-
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    logger = logging.getLogger(f"{plugin_class.__name__}Standalone")
-
+def execute_plugin(plugin_class: type[BasePlugin], case_name: str):
+    """
+    Core logic to execute a single plugin within a given case context.
+    This function is designed to be called by different CLI wrappers.
+    Args:
+        plugin_class: The plugin class to run.
+        case_name: The name of the case directory.
+    Raises:
+        FileNotFoundError: If case path or configs are not found.
+        ValueError: If the plugin is not found in the case config.
+    """
+    case_path = Path('cases') / case_name
     if not case_path.is_dir():
-        logger.error(f"Case path not found or is not a directory: {case_path}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Case path not found or is not a directory: {case_path}")
 
-    # --- 2. Load Configuration (reusing ConfigManager) ---
-    config_manager = ConfigManager(project_root=str(project_root_path))
+    # --- Load Configuration ---
+    config_manager = ConfigManager(project_root=str(project_root))
     case_yaml_path = case_path / "case.yaml"
-    
     if not case_yaml_path.exists():
-        logger.error(f"Case config file not found: {case_yaml_path}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Case config file not found: {case_yaml_path}")
 
     with open(case_yaml_path, 'r', encoding='utf-8') as f:
         case_config = yaml.safe_load(f)
 
-    # Find the plugin's specific config from the pipeline steps in case.yaml
-    plugin_specific_config = {}
+    plugin_specific_config = None
     for step in case_config.get("pipeline", []):
         if step.get("plugin") == plugin_class.__name__:
-            plugin_specific_config = step.get("config", {})
-            logger.info(f"Found specific config for {plugin_class.__name__} in case.yaml")
+            plugin_specific_config = step
+            logger.info(f"Found config for {plugin_class.__name__} in case.yaml")
             break
     
-    # Get the final merged config using ConfigManager
-    final_config = config_manager.get_plugin_config(
-        plugin_module_path=plugin_file_path,
-        case_config_override=plugin_specific_config
-    )
+    if plugin_specific_config is None:
+        raise ValueError(f"Plugin '{plugin_class.__name__}' not found in the pipeline of '{case_yaml_path}'")
 
-    # --- 3. Initialize DataHub ---
-    # The DataHub is responsible for all data loading and management
+    # --- Initialize DataHub ---
     data_sources = case_config.get("data_sources", {})
-    data_hub = DataHub(case_path=str(case_path), data_sources=data_sources)
-    # The logger can be passed to the DataHub for consistent logging
-    data_hub.set_logger(logger)
+    data_hub = DataHub(case_path=case_path, data_sources=data_sources)
 
+    # --- Instantiate and Run the Plugin ---
+    logger.info(f"--- Running {plugin_class.__name__} for case: {case_path.name} ---")
+    plugin_instance = plugin_class(config=plugin_specific_config)
+    plugin_instance.run(data_hub)
 
-    # --- 4. Instantiate and Run the Plugin ---
-    logger.info(f"--- Running {plugin_class.__name__} Standalone for case: {case_path.name} ---")
-    logger.debug(f"Final Plugin Config: {json.dumps(final_config, indent=2)}")
-    
-    try:
-        plugin_instance = plugin_class(config=final_config)
-        plugin_instance.run(data_hub)
-    except Exception as e:
-        logger.error(f"An error occurred while running the plugin: {e}", exc_info=True)
-        sys.exit(1)
-
-    # --- 5. Print Results ---
-    logger.info(f"--- Standalone Run Finished for {plugin_class.__name__} ---")
+    logger.info(f"--- Finished Run for {plugin_class.__name__} ---")
     print("\n====== Final DataHub State ======")
     print(json.dumps(data_hub.summary(), indent=2, ensure_ascii=False))
     print("=============================")
+
+
+def run_single_plugin_by_name(plugin_name: str, case_name: str):
+    """
+    Finds a plugin by name and executes it. Called by the main run.py CLI.
+    """
+    plugin_class = find_plugin_class(plugin_name)
+    if plugin_class:
+        try:
+            execute_plugin(plugin_class, case_name)
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(e)
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while running plugin '{plugin_name}': {e}", exc_info=True)
+            sys.exit(1)
+
+def run_plugin_standalone(plugin_class: type[BasePlugin]):
+    """
+    A generic helper function to run a plugin standalone using argparse.
+    This is a thin wrapper around execute_plugin.
+    """
+    parser = argparse.ArgumentParser(description=f"Standalone runner for {plugin_class.__name__}")
+    parser.add_argument("--case", required=True, help="Name of the case directory under 'cases/'")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+
+    try:
+        execute_plugin(plugin_class, args.case)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(e)
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+        sys.exit(1)

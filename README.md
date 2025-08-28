@@ -1,103 +1,113 @@
 # Data Replay Framework
 
-A flexible and extensible Python framework for building complex data processing pipelines. This framework is designed for scenarios where data needs to be passed through a series of processing steps (plugins), with clear data management and configuration.
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-repo/data-replay)
+
+An industrial-grade Python framework for building robust, extensible, and maintainable data processing pipelines.
+
+## Core Philosophy
+
+This framework is designed from the ground up to support complex, multi-stage data processing tasks where traceability, configurability, and modularity are critical. It enforces a clean separation between the core orchestration logic, the individual processing steps (plugins), and the data itself.
 
 ## Key Features
 
-- **Pluggable Architecture**: Easily add new processing steps by creating new plugins.
-- **Centralized Data Management (DataHub)**: A central `DataHub` manages all data within a pipeline run, handling in-memory data transfer, lazy loading from disk, and automatic persistence.
-- **Hierarchical Configuration**: Combines global, case-specific, and command-line configurations.
-- **Clear Data Provenance**: The `data_sources` section in the case configuration provides a clear and centralized catalog of all data, its source, and its destination.
-- **Template-Based Case Management**: Reusable pipeline configurations can be stored as templates and copied to active case directories for execution.
+- **Unified CLI**: A single, consistent entry point (`run.py`) for all project operations, from running pipelines to generating data and documentation.
+- **Modular & Pluggable**: Encapsulate processing logic into standalone plugins. Easily extend the framework by adding new plugins without altering the core engine.
+- **Centralized Data Management**: A powerful `DataHub` manages the lifecycle of all data, providing in-memory caching, lazy loading from disk, and automatic persistence.
+- **Hierarchical Configuration**: A multi-layered configuration system combines global settings with case-specific parameters, allowing for flexible and reusable pipeline definitions.
+- **Standalone & Pipeline Execution**: Plugins can be run for an entire pipeline or executed individually for debugging and testing.
 
 ## Project Structure
 
 ```
-data_replay/
-│
-├───cases/              # Contains active case directories for specific runs.
-│   └───demo/           # An example case directory.
-│
-├───config/             # Global configuration files.
-│   ├───global.yaml
-│   └───logging.yaml
-│
-├───core/               # Core framework components (PipelineRunner, DataHub, etc.).
-│
-├───logs/               # Log files are generated here.
-│
-├───modules/            # Contains all the reusable plugins.
-│   ├───base_plugin.py
-│   └───...
-│
-├───templates/          # Stores reusable case configuration templates.
-│   └───car_tracking_case.yaml
-│
-├───demo_run.py         # Main entry point to run a pipeline.
-└───README.md           # This file.
+.
+├── cases
+│   └── demo
+│       └── ...
+├── config
+│   ├── global.yaml
+│   └── logging.yaml
+├── core
+│   ├── config_manager.py
+│   ├── data_hub.py
+│   ├── pipeline_runner.py
+│   └── plugin_helper.py
+├── modules
+│   ├── base_plugin.py
+│   └── ...
+├── scripts
+│   └── generation.py
+├── .gitignore
+├── run.py
+└── README.md
 ```
 
-## How to Run a Case
+## Usage: The Unified CLI
 
-1.  **Choose a Template**: Look inside the `templates/` directory for a suitable case template (e.g., `car_tracking_case.yaml`).
-2.  **Set up the Case**: Copy the chosen template into a case directory (e.g., `cases/demo/`).
-3.  **Rename the Template**: Rename the copied file to `case.yaml`.
-4.  **Run the Pipeline**: Execute the `demo_run.py` script, providing the name of the case directory.
-
-   For example, to run the `demo` case:
-   ```bash
-   python demo_run.py --case demo
-   ```
-   This will execute the pipeline defined in `cases/demo/case.yaml`.
-
-## How to Create a Plugin
-
-1.  **Create a Python file** in an appropriate subdirectory under `modules/`.
-2.  **Create a class** that inherits from `BasePlugin`.
-3.  **Implement the `__init__` method** to handle any specific configurations.
-4.  **Implement the `run` method**. This is the core logic of your plugin. It receives the `DataHub` instance, which you can use to get and register data.
-
-   ```python
-   from modules.base_plugin import BasePlugin
-   from core.data_hub import DataHub
-
-   class MyNewPlugin(BasePlugin):
-       def run(self, data_hub: DataHub):
-           super().run(data_hub)
-
-           # Get data from the DataHub
-           input_data = data_hub.get("some_input_data")
-
-           # ... your processing logic ...
-           output_data = ...
-
-           # Register your output data with the DataHub
-           data_hub.register("my_output_data", output_data)
-   ```
-
-## Configuration (`case.yaml`)
-
-A `case.yaml` file defines the entire pipeline for a specific run.
-
-```yaml
-case_name: "ExampleCase"
-
-# 1. Define all data "nouns" of the pipeline
-data_sources:
-  raw_data:
-    path: "path/to/initial_data.csv" # Source file for lazy loading
-  processed_data:
-    path: "intermediate/processed.parquet" # Destination file for auto-persistence
-
-# 2. Define the pipeline steps (the "verbs")
-pipeline:
-  - plugin: InitialDataReader
-    outputs: ["raw_data"] # Loads the data defined in data_sources
-
-  - plugin: MyNewPlugin
-    # The plugin's config can access these lists
-    inputs: ["raw_data"]
-    outputs: ["processed_data"]
-    config:
-      my_param: 42
+All interactions with the framework are handled through the central `run.py` script. You can see a full list of commands by running:
+```bash
+python run.py --help
 ```
+
+### Running the Demo Pipeline
+
+To execute the full demo pipeline defined in `cases/demo/case.yaml`:
+```bash
+python run.py pipeline --case demo
+```
+
+### Running a Single Plugin
+
+For debugging or testing, you can run any plugin from the demo case in isolation. For example, to run only the `InitialDataReader`:
+```bash
+python run.py plugin InitialDataReader --case demo
+```
+
+### Utility Commands
+
+- **Generate Demo Data**: Cleans and regenerates all raw data for the demo case.
+  ```bash
+  python run.py generate-data
+  ```
+
+- **Generate Plugin Docs**: Scans all plugins and updates the `PLUGINS.md` reference file.
+  ```bash
+  python run.py generate-docs
+  ```
+
+## How It Works
+
+### 1. The `case.yaml`
+
+This file is the heart of a pipeline run. It defines:
+- **`data_sources`**: A catalog of all data "nouns" in the pipeline.
+- **`pipeline`**: A list of the plugins (the "verbs") to execute in sequence.
+
+### 2. The DataHub
+
+The `DataHub` is a central object passed through the pipeline that manages all data.
+
+### 3. Plugins
+
+A plugin is a Python class that inherits from `BasePlugin` and implements the `run` method.
+
+## Framework in Practice: The Demo Case
+
+The `demo` case provides a concrete example of how the framework's components work together. Let's trace the execution step by step when you run `python run.py pipeline --case demo`.
+
+1.  **Initiation**: The `main` function in `run.py` parses the `pipeline` command and calls the `run_pipeline` function, passing it the `demo` case name.
+
+2.  **Configuration Loading**: The `PipelineRunner` initializes the `ConfigManager`, which loads and merges `global.yaml` and `cases/demo/case.yaml`.
+
+3.  **DataHub Creation**: The `PipelineRunner` initializes the `DataHub`, populating its registry with the data sources defined in `case.yaml`.
+
+4.  **Pipeline Execution**: The `PipelineRunner` iterates through the plugins defined in the `pipeline` section of `case.yaml`, executing each one in sequence.
+
+5.  **Completion**: After the pipeline finishes, `run.py` prints a summary of the `DataHub`'s final state.
+
+This walkthrough demonstrates the core principles: a declarative pipeline defined in YAML, orchestrated by the `PipelineRunner`, with all data flowing through and managed by the central `DataHub`.
+
+## Future Development
+
+- **Configuration Overrides**: Implement command-line overrides for case configuration values.
+- **Data Quality Plugins**: Add a standard set of plugins for data validation and quality analysis.
+- **Enhanced Plugin Discovery**: Improve the plugin loading mechanism to be more dynamic.
