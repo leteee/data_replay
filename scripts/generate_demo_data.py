@@ -90,9 +90,6 @@ def generate_data():
     manifest_data = []
     for i, row in ground_truth_df.iterrows():
         img = Image.new('RGB', IMAGE_SIZE, color='black')
-        draw = ImageDraw.Draw(img)
-        for x_grid in range(0, IMAGE_SIZE[0], 50): draw.line([(x_grid, 0), (x_grid, IMAGE_SIZE[1])], fill=(50, 50, 50))
-        for y_grid in range(0, IMAGE_SIZE[1], 50): draw.line([(0, y_grid), (IMAGE_SIZE[0], y_grid)], fill=(50, 50, 50))
         
         frame_path_rel = os.path.join("raw_data", "frames", f"{i:04d}.png")
         img.save(os.path.join(CASE_DIR, frame_path_rel))
