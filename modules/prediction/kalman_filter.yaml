@@ -1,4 +1,0 @@
-# Default configuration for KalmanFilter plugin
-dt: 0.02
-process_noise: 0.1
-measurement_noise: 0.5
