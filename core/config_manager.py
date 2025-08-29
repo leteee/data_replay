@@ -45,6 +45,21 @@ class ConfigManager:
         self.global_config = load_yaml(global_config_path)
         print(f"加载全局配置: {global_config_path}")
 
+    def get_cases_root_path(self) -> Path:
+        """
+        Resolves the absolute path to the root directory where cases are stored.
+        It reads the 'cases_root' from the global config.
+        - If 'cases_root' is an absolute path, it's used directly.
+        - If it's a relative path, it's resolved relative to the project root.
+        - If not set, it defaults to 'cases' directory in the project root.
+        """
+        cases_root_str = self.global_config.get("cases_root", "cases")
+        cases_root_path = Path(cases_root_str)
+        if cases_root_path.is_absolute():
+            return cases_root_path
+        else:
+            return (self.project_root / cases_root_path).resolve()
+
     def get_plugin_config(self, plugin_module_path: str, case_config_override: dict) -> dict:
         """
         Calculates the final, merged configuration for a specific plugin instance.

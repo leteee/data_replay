@@ -49,12 +49,20 @@ def execute_plugin(plugin_class: type[BasePlugin], case_name: str):
         FileNotFoundError: If case path or configs are not found.
         ValueError: If the plugin is not found in the case config.
     """
-    case_path = Path('cases') / case_name
+    # Initialize ConfigManager to resolve cases_root
+    # project_root is already defined at the top of this file
+    config_manager = ConfigManager(project_root=str(project_root))
+    cases_root = config_manager.get_cases_root_path()
+    case_arg_path = Path(case_name)
+    if case_arg_path.is_absolute():
+        case_path = case_arg_path
+    else:
+        case_path = cases_root / case_arg_path
+
     if not case_path.is_dir():
         raise FileNotFoundError(f"Case path not found or is not a directory: {case_path}")
 
     # --- Load Configuration ---
-    config_manager = ConfigManager(project_root=str(project_root))
     case_yaml_path = case_path / "case.yaml"
     if not case_yaml_path.exists():
         raise FileNotFoundError(f"Case config file not found: {case_yaml_path}")

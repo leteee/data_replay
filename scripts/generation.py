@@ -12,10 +12,10 @@ import yaml
 # --- Data Generation ---
 
 # Configuration
-NUM_FRAMES = 2000
-FPS = 50
+NUM_FRAMES = 500
+FPS = 30
 LATENCY_MS = 200
-IMAGE_SIZE = (800, 600)
+IMAGE_SIZE = (1920, 1080)
 CASE_DIR = "cases/demo"
 RAW_DATA_DIR = os.path.join(CASE_DIR, "raw_data")
 INTERMEDIATE_DIR = os.path.join(CASE_DIR, "intermediate")
@@ -42,7 +42,7 @@ def generate_data():
     print(f"Created directory: {FRAMES_DIR}")
 
     dt_s = 1.0 / FPS
-    timestamps_s = np.arange(0, NUM_FRAMES * dt_s, dt_s)
+    timestamps_s = np.linspace(0, (NUM_FRAMES - 1) * dt_s, NUM_FRAMES)
     speed_profile = np.concatenate([
         np.linspace(10, 30, NUM_FRAMES // 3),
         np.full(NUM_FRAMES // 3, 30),
@@ -75,7 +75,8 @@ def generate_data():
         'true_x': positions_arr[:, 0],
         'true_y': positions_arr[:, 1],
         'true_speed': speed_profile,
-        'true_steering_angle': steering_profile_deg
+        'true_steering_angle': steering_profile_deg,
+        'true_yaw_rad': directions_rad
     })
 
     manifest_data = []
@@ -85,26 +86,40 @@ def generate_data():
         img.save(os.path.join(CASE_DIR, frame_path_rel))
         manifest_data.append({
             'timestamp': row['timestamp'], 'image_path': frame_path_rel,
-            'true_x': row['true_x'], 'true_y': row['true_y']
+            'true_x': row['true_x'], 'true_y': row['true_y'],
+            'true_yaw_rad': row['true_yaw_rad'],
+            'true_speed': row['true_speed']
         })
 
     pd.DataFrame(manifest_data).to_csv(MANIFEST_CSV_PATH, index=False, float_format='%.3f')
     print(f"Generated {NUM_FRAMES} frames and video manifest: {MANIFEST_CSV_PATH}")
 
+    # --- Create Latent Data by Shifting Ground Truth ---
     latency_steps = int(LATENCY_MS / (dt_s * 1000))
-    latent_df = ground_truth_df.copy()
-    for col in ['true_x', 'true_y', 'true_speed', 'true_steering_angle']:
-        new_col = col.replace('true_', '')
-        if new_col == 'x' or new_col == 'y': new_col = col
-        latent_df[new_col] = latent_df[col].shift(latency_steps)
     
-    latent_df.rename(columns={'true_x': 'x', 'true_y': 'y', 'true_speed': 'vehicle_speed', 'true_steering_angle': 'steering_wheel_angle'}, inplace=True)
-    latent_df.dropna(inplace=True)
-    latent_measurements_df = latent_df[['timestamp', 'x', 'y', 'vehicle_speed', 'steering_wheel_angle']]
-
+    latent_measurements_df = pd.DataFrame()
+    
+    latent_measurements_df['timestamp'] = ground_truth_df['timestamp']
+    latent_measurements_df['x'] = ground_truth_df['true_x'].shift(latency_steps)
+    latent_measurements_df['y'] = ground_truth_df['true_y'].shift(latency_steps)
+    latent_measurements_df['vehicle_speed'] = ground_truth_df['true_speed'].shift(latency_steps)
+    latent_measurements_df['steering_wheel_angle'] = ground_truth_df['true_steering_angle'].shift(latency_steps)
+    latent_measurements_df['yaw'] = ground_truth_df['true_yaw_rad'].shift(latency_steps)
+    
+    latent_measurements_df.dropna(inplace=True)
+    
+    # Add noise to the valid data by creating explicitly indexed Series
     noise_std_dev = 2.5
-    latent_measurements_df['x'] += np.random.normal(0, noise_std_dev, len(latent_measurements_df))
-    latent_measurements_df['y'] += np.random.normal(0, noise_std_dev, len(latent_measurements_df))
+    
+    noise_x = pd.Series(np.random.normal(0, noise_std_dev, len(latent_measurements_df)), index=latent_measurements_df.index)
+    latent_measurements_df['x'] += noise_x
+
+    noise_y = pd.Series(np.random.normal(0, noise_std_dev, len(latent_measurements_df)), index=latent_measurements_df.index)
+    latent_measurements_df['y'] += noise_y
+
+    noise_yaw = pd.Series(np.random.normal(0, np.deg2rad(1.0), len(latent_measurements_df)), index=latent_measurements_df.index)
+    latent_measurements_df['yaw'] += noise_yaw
+
     print(f"Added measurement noise with std dev: {noise_std_dev}")
 
     latent_measurements_df.to_csv(LATENT_CSV_PATH, index=False, float_format='%.3f')

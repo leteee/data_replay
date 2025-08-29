@@ -1,7 +1,6 @@
-
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import shutil
 from modules.base_plugin import BasePlugin
@@ -49,61 +48,84 @@ class FrameRenderer(BasePlugin):
             if pd.isna(row['image_path']) or pd.isna(row['predicted_x']) or pd.isna(row['true_x']):
                 continue
 
-            img = Image.new('RGB', (800, 600), color='black')
+            img = Image.new('RGB', (1920, 1080), color='black')
             draw = ImageDraw.Draw(img)
 
             # --- Dynamic Camera Logic ---
-            # 1. Define camera center (focused on the ground truth)
+            zoom_factor = self.config.get("zoom_factor", 2.5)
             cam_world_x, cam_world_y = row['true_x'], row['true_y']
             viewport_width, viewport_height = img.size
 
-            # 2. Function to transform world coordinates to camera (pixel) coordinates
             def world_to_camera(world_x, world_y):
-                cam_x = world_x - cam_world_x + viewport_width / 2
-                cam_y = world_y - cam_world_y + viewport_height / 2
+                relative_x = (world_x - cam_world_x) * zoom_factor
+                relative_y = (world_y - cam_world_y) * zoom_factor
+                cam_x = relative_x + viewport_width / 2
+                cam_y = relative_y + viewport_height / 2
                 return cam_x, cam_y
 
-            # 3. Draw dynamic grid and coordinates
+            # --- Draw Grid ---
             grid_spacing = 50.0
             grid_color = (50, 50, 50)
             text_color = (128, 128, 128)
+            world_top_left_x = cam_world_x - (viewport_width / 2.0) / zoom_factor
+            world_top_left_y = cam_world_y - (viewport_height / 2.0) / zoom_factor
+            world_bottom_right_x = cam_world_x + (viewport_width / 2.0) / zoom_factor
+            world_bottom_right_y = cam_world_y + (viewport_height / 2.0) / zoom_factor
 
-            world_top_left_x = cam_world_x - (viewport_width / 2.0)
-            world_top_left_y = cam_world_y - (viewport_height / 2.0)
             start_grid_x = world_top_left_x - (world_top_left_x % grid_spacing)
             start_grid_y = world_top_left_y - (world_top_left_y % grid_spacing)
 
-            # Draw vertical grid lines and X coordinates
-            for x in np.arange(float(start_grid_x), float(start_grid_x + viewport_width + grid_spacing), float(grid_spacing)):
+            for x in np.arange(float(start_grid_x), float(world_bottom_right_x), float(grid_spacing)):
                 line_start_cam = world_to_camera(x, world_top_left_y)
-                line_end_cam = world_to_camera(x, world_top_left_y + viewport_height)
+                line_end_cam = world_to_camera(x, world_bottom_right_y)
                 draw.line([line_start_cam, line_end_cam], fill=grid_color)
-                # Add text label at the bottom
                 text_pos_cam = (line_start_cam[0] + 5, viewport_height - 20)
                 draw.text(text_pos_cam, f"{x:.0f}m", fill=text_color)
 
-            # Draw horizontal grid lines and Y coordinates
-            for y in np.arange(float(start_grid_y), float(start_grid_y + viewport_height + grid_spacing), float(grid_spacing)):
+            for y in np.arange(float(start_grid_y), float(world_bottom_right_y), float(grid_spacing)):
                 line_start_cam = world_to_camera(world_top_left_x, y)
-                line_end_cam = world_to_camera(world_top_left_x + viewport_width, y)
+                line_end_cam = world_to_camera(world_bottom_right_x, y)
                 draw.line([line_start_cam, line_end_cam], fill=grid_color)
-                # Add text label on the left
                 text_pos_cam = (10, line_start_cam[1] + 5)
                 draw.text(text_pos_cam, f"{y:.0f}m", fill=text_color)
 
             # --- Draw Data Points ---
-            radius = 8
-            # Draw ground truth (green circle) - it will always be in the center
+            radius = self.config.get("circle_radius_px", 15)
+            width = self.config.get("circle_width_px", 3)
+
+            # Draw ground truth (green circle)
             gx_cam, gy_cam = world_to_camera(row['true_x'], row['true_y'])
-            draw.ellipse([(gx_cam - radius, gy_cam - radius), (gx_cam + radius, gy_cam + radius)], fill='green', outline='green')
+            draw.ellipse([(gx_cam - radius, gy_cam - radius), (gx_cam + radius, gy_cam + radius)], outline='#28a745', width=width)
 
             # Draw predicted position (red circle)
             px_cam, py_cam = world_to_camera(row['predicted_x'], row['predicted_y'])
-            draw.ellipse([(px_cam - radius, py_cam - radius), (px_cam + radius, py_cam + radius)], fill='red', outline='red')
+            draw.ellipse([(px_cam - radius, py_cam - radius), (px_cam + radius, py_cam + radius)], outline='#dc3545', width=width)
 
-            # --- Add Legend ---
-            draw.text((10, 10), "Green: Ground Truth", fill="green")
-            draw.text((10, 30), "Red: Predicted", fill="red")
+            # --- Add Info Display ---
+            try:
+                font = ImageFont.truetype("consola.ttf", 18)
+            except IOError:
+                font = ImageFont.load_default()
+
+            # Ground Truth Info
+            true_ts_str = row['timestamp'].strftime('%H:%M:%S.%f')[:-3]
+            true_yaw_deg = np.rad2deg(row.get('true_yaw_rad', 0.0))
+            true_speed = row.get('true_speed', 0.0)
+            gt_text = f"""--- Ground Truth ---
+Time:  {true_ts_str}
+Speed: {true_speed:6.2f} m/s
+Yaw:   {true_yaw_deg:6.1f}°"""
+            draw.text((20, 30), gt_text, fill='#28a745', font=font)
+
+            # Predicted Info
+            predicted_yaw = row.get('predicted_yaw_rad', 0.0)
+            pred_yaw_deg = np.rad2deg(predicted_yaw)
+            pred_speed = row.get('predicted_speed', 0.0)
+            pred_text = f"""--- Predicted ---
+Time:  {true_ts_str}
+Speed: {pred_speed:6.2f} m/s
+Yaw:   {pred_yaw_deg:6.1f}°"""
+            draw.text((20, 130), pred_text, fill='#dc3545', font=font)
 
             # --- Save Frame ---
             output_frame_path = output_dir / Path(row['image_path']).name

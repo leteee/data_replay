@@ -1,4 +1,4 @@
-data_root: "./cases"
+cases_root: "./cases"
 log_level: "INFO"
 video_decoder: "opencv"
 sync_method: "interpolation"

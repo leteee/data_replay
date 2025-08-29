@@ -1,0 +1,39 @@
+case_name: latency_compensated_replay
+description: "A demo case for replaying latent vehicle data with prediction and visualization."
+
+# Centralized definition of all data sources and their persistence paths
+data_sources:
+  video_manifest:
+    path: "cases/demo/raw_data/video_manifest.csv"
+  latent_measurements:
+    path: "cases/demo/raw_data/latent_measurements.csv"
+  predicted_states:
+    path: "cases/demo/intermediate/predicted_states.csv"
+
+pipeline:
+  - plugin: InitialDataReader
+    outputs: ["video_manifest", "latent_measurements"]
+
+  - plugin: LatencyCompensator
+    inputs: ["latent_measurements"]
+    outputs: ["predicted_states"]
+    config:
+      latency_to_compensate_s: 0.2
+      process_noise: 0.1
+      measurement_noise: 0.5
+      fps: 50
+
+  - plugin: FrameRenderer
+    inputs: ["video_manifest", "predicted_states"]
+    config:
+      # Path is relative to the case directory (cases/demo)
+      output_dir: "intermediate/rendered_frames"
+      zoom_factor: 5.0
+      
+
+  - plugin: VideoCreator
+    config:
+      # Paths are relative to the case directory (cases/demo)
+      input_dir: "intermediate/rendered_frames"
+      output_path: "output/replay_video.mp4"
+      fps: 50

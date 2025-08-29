@@ -2,8 +2,10 @@ import argparse
 import logging
 from pathlib import Path
 import json
+import shutil
 
 from core.pipeline_runner import PipelineRunner
+from core.config_manager import ConfigManager
 from core.plugin_helper import run_single_plugin_by_name
 from scripts.generation import generate_data, generate_plugin_documentation
 
@@ -13,21 +15,53 @@ logger = logging.getLogger(__name__)
 
 def run_pipeline(args):
     """Handles the 'pipeline' command."""
-    case_path = Path('cases') / args.case
-    
-    logger.debug(f"Current Working Directory: {Path.cwd()}")
-    logger.debug(f"Resolved Case Path: {case_path.resolve()}")
+    cli_overrides = {}  # TODO: Parse CLI args for config overrides
+    project_root = Path(__file__).parent.resolve()
+
+    # Initialize ConfigManager to resolve cases_root
+    config_manager = ConfigManager(project_root=str(project_root), cli_args=cli_overrides)
+    cases_root = config_manager.get_cases_root_path()
+    case_arg_path = Path(args.case)
+    if case_arg_path.is_absolute():
+        case_path = case_arg_path
+    else:
+        case_path = cases_root / case_arg_path
+
+    logger.debug(f"Project Root: {project_root}")
+    logger.debug(f"Cases Root: {cases_root}")
+    logger.debug(f"Resolved Case Path: {case_path}")
+
+    # Handle template copying if provided
+    if args.template:
+        template_name = args.template
+        template_filename = f"{template_name}_case.yaml"
+        template_path = project_root / "templates" / template_filename
+        
+        destination_path = case_path / "case.yaml"
+
+        if not template_path.exists():
+            logger.error(f"Template file not found: {template_path}")
+            return
+
+        # Ensure the case directory exists before copying
+        case_path.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Copying template '{template_name}' to '{destination_path}'")
+        shutil.copy(template_path, destination_path)
 
     if not case_path.is_dir():
         logger.error(f"Case path not found or is not a directory: {case_path}")
         return
 
     logger.info(f"====== Running Case: {case_path.name} ======")
-    
-    cli_overrides = {} # TODO: Parse CLI args for config overrides
 
     try:
-        runner = PipelineRunner(case_path=str(case_path), cli_args=cli_overrides)
+        # We pass the already resolved, absolute path to the runner
+        runner = PipelineRunner(
+            project_root=str(project_root),
+            case_path=str(case_path), 
+            cli_args=cli_overrides
+        )
         final_data_hub = runner.run()
 
         logger.info("\n====== Final DataHub State ======")
@@ -71,6 +105,12 @@ def main():
         type=str,
         required=True,
         help="Name of the case directory under 'cases/' (e.g., 'demo')"
+    )
+    parser_pipeline.add_argument(
+        "--template",
+        type=str,
+        required=False,
+        help="Name of the case template to use from the 'templates' directory."
     )
     parser_pipeline.set_defaults(func=run_pipeline)
 

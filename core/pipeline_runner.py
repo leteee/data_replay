@@ -14,9 +14,9 @@ class PipelineRunner:
     It reads a case configuration, discovers and loads plugins, and executes
     the pipeline steps sequentially.
     """
-    def __init__(self, case_path: str, cli_args: dict = None):
+    def __init__(self, project_root: str, case_path: str, cli_args: dict = None):
+        self.project_root = Path(project_root).resolve()
         self.case_path = Path(case_path).resolve()
-        self.project_root = self.case_path.parent.parent
 
         setup_logging(case_name=self.case_path.name)
         self.logger = logging.getLogger(__name__)

@@ -18,9 +18,24 @@ class LatencyCompensator(BasePlugin):
         # State vector: [x, y, v, yaw, yaw_rate]
         self.x = np.zeros((5, 1))
         self.P = np.eye(5) * 500 # Initial state covariance
-        self.H = np.array([[1, 0, 0, 0, 0], [0, 1, 0, 0, 0]]) # We only measure x, y
-        self.R = np.eye(2) * self.config.get('measurement_noise', 0.5)
-        # Process noise - tuned for this model
+        
+        # Measurement matrix H: We now measure x, y, v, and yaw
+        self.H = np.array([
+            [1, 0, 0, 0, 0],  # x
+            [0, 1, 0, 0, 0],  # y
+            [0, 0, 1, 0, 0],  # v
+            [0, 0, 0, 1, 0]   # yaw
+        ])
+        
+        # Measurement noise R
+        self.R = np.diag([
+            self.config.get('measurement_noise_pos', 0.5)**2,
+            self.config.get('measurement_noise_pos', 0.5)**2,
+            self.config.get('measurement_noise_vel', 0.8)**2,
+            self.config.get('measurement_noise_yaw', 0.5)**2
+        ])
+
+        # Process noise Q
         self.Q = np.diag([self.config.get('process_noise_std_pos', 0.5)**2,
                           self.config.get('process_noise_std_pos', 0.5)**2,
                           self.config.get('process_noise_std_vel', 0.8)**2,
@@ -70,34 +85,41 @@ class LatencyCompensator(BasePlugin):
         super().run(data_hub)
         input_name = self.config.get("inputs", [None])[0]
         latent_df = data_hub.get(input_name)
+        latent_df['timestamp'] = pd.to_datetime(latent_df['timestamp'], unit='s')
 
         # Initialize state
-        self.x[0] = latent_df.iloc[0]['x'] # x
-        self.x[1] = latent_df.iloc[0]['y'] # y
-        self.x[2] = latent_df.iloc[0]['vehicle_speed'] # v
-        self.x[3] = np.deg2rad(latent_df.iloc[0]['steering_wheel_angle']) # yaw - simplified assumption
-        self.x[4] = 0 # yaw_rate
+        self.x[0] = latent_df.iloc[0]['x']
+        self.x[1] = latent_df.iloc[0]['y']
+        self.x[2] = latent_df.iloc[0]['vehicle_speed']
+        self.x[3] = latent_df.iloc[0]['yaw']
+        self.x[4] = 0 # Initial yaw rate
 
         predictions = []
         for i in range(len(latent_df)):
-            dt = (latent_df.iloc[i]['timestamp'] - latent_df.iloc[i-1]['timestamp']) if i > 0 else (1.0 / 50)
+            dt = (latent_df.iloc[i]['timestamp'] - latent_df.iloc[i-1]['timestamp']).total_seconds() if i > 0 else (1.0 / 30.0)
             
             # EKF Predict
             self.x, self.P = self._predict_step(self.x, self.P, dt)
 
-            # EKF Update
-            z = np.array([[latent_df.iloc[i]['x']], [latent_df.iloc[i]['y']]])
+            # EKF Update with all available measurements
+            z = np.array([
+                [latent_df.iloc[i]['x']],
+                [latent_df.iloc[i]['y']],
+                [latent_df.iloc[i]['vehicle_speed']],
+                [latent_df.iloc[i]['yaw']]
+            ])
             y = z - self.H @ self.x
             S = self.H @ self.P @ self.H.T + self.R
             K = self.P @ self.H.T @ np.linalg.inv(S)
             self.x = self.x + K @ y
             self.P = (np.eye(5) - K @ self.H) @ self.P
 
-            # Predict forward by latency
+            # Predict forward by latency to get the compensated state
             compensated_state, _ = self._predict_step(self.x, self.P, self.latency_s)
-            predictions.append(compensated_state[:2].flatten())
+            # Store the first 4 state variables: x, y, speed, yaw
+            predictions.append(compensated_state[:4].flatten())
 
-        pred_df = pd.DataFrame(predictions, columns=['predicted_x', 'predicted_y'])
+        pred_df = pd.DataFrame(predictions, columns=['predicted_x', 'predicted_y', 'predicted_speed', 'predicted_yaw_rad'])
         pred_df['timestamp'] = latent_df['timestamp']
 
         output_name = self.config.get("outputs", [None])[0]
