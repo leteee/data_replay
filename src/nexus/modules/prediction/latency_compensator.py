@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from modules.base_plugin import BasePlugin
-from core.data_hub import DataHub
+from ..base_plugin import BasePlugin
+from ...core.data_hub import DataHub
 
 class LatencyCompensator(BasePlugin):
     """

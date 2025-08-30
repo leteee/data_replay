@@ -3,11 +3,16 @@ import logging
 from pathlib import Path
 import json
 import shutil
+import sys
 
-from core.pipeline_runner import PipelineRunner
-from core.config_manager import ConfigManager
-from core.plugin_helper import run_single_plugin_by_name
-from scripts.generation import generate_data, generate_plugin_documentation
+# Add the src directory to the Python path
+project_root = Path(__file__).parent.resolve()
+sys.path.insert(0, str(project_root / "src"))
+
+from nexus.core.pipeline_runner import PipelineRunner
+from nexus.core.config_manager import ConfigManager
+from nexus.core.plugin_helper import run_single_plugin_by_name
+from nexus.scripts.generation import generate_data, generate_plugin_documentation
 
 # Basic logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
@@ -16,7 +21,6 @@ logger = logging.getLogger(__name__)
 def run_pipeline(args):
     """Handles the 'pipeline' command."""
     cli_overrides = {}  # TODO: Parse CLI args for config overrides
-    project_root = Path(__file__).parent.resolve()
 
     # Initialize ConfigManager to resolve cases_root
     config_manager = ConfigManager(project_root=str(project_root), cli_args=cli_overrides)

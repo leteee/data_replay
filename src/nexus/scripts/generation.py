@@ -187,7 +187,7 @@ def generate_plugin_documentation():
     """
     Finds all plugins, extracts their info, and writes PLUGINS.md.
     """
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent.parent
     modules_dir = project_root / 'modules'
     output_file = project_root / 'PLUGINS.md'
 

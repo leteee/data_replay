@@ -2,7 +2,7 @@ import pandas as pd
 from abc import ABC, abstractmethod
 import logging
 from pathlib import Path
-from core.data_hub import DataHub
+from ..core.data_hub import DataHub
 
 class BasePlugin(ABC):
     """

@@ -3,8 +3,8 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import shutil
-from modules.base_plugin import BasePlugin
-from core.data_hub import DataHub
+from ..base_plugin import BasePlugin
+from ...core.data_hub import DataHub
 
 class FrameRenderer(BasePlugin):
     """
@@ -36,7 +36,7 @@ class FrameRenderer(BasePlugin):
 
         # --- Merge Data ---
         manifest_df['timestamp'] = pd.to_datetime(manifest_df['timestamp'], unit='s')
-        predictions_df['timestamp'] = pd.to_datetime(predictions_df['timestamp'], unit='s')
+        predictions_df['timestamp'] = pd.to_datetime(predictions_df['timestamp'])
         merged_df = pd.merge_asof(manifest_df.sort_values('timestamp'),
                                   predictions_df.sort_values('timestamp'),
                                   on='timestamp', direction='nearest', tolerance=pd.Timedelta('0.01s'))

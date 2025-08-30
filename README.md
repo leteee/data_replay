@@ -1,8 +1,8 @@
-# Data Replay Framework
+# Nexus
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-repo/data-replay)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-repo/nexus)
 
-An industrial-grade Python framework for building robust, extensible, and maintainable data processing pipelines.
+**Nexus** is an industrial-grade Python framework for building robust, extensible, and maintainable data processing pipelines.
 
 ## Core Philosophy
 
@@ -10,70 +10,59 @@ This framework is designed from the ground up to support complex, multi-stage da
 
 ## Key Features
 
-- **Unified CLI**: A single, consistent entry point (`run.py`) for all project operations, from running pipelines to generating data and documentation.
+- **Unified CLI**: A single, consistent entry point (`run.py`) for all project operations.
 - **Modular & Pluggable**: Encapsulate processing logic into standalone plugins. Easily extend the framework by adding new plugins without altering the core engine.
-- **Case Templating**: Quickly scaffold new cases using predefined templates. Create a template once and reuse it to ensure consistency across multiple cases.
-- **Centralized Data Management**: A powerful `DataHub` manages the lifecycle of all data, providing in-memory caching, lazy loading from disk, and automatic persistence.
-- **Hierarchical Configuration**: A multi-layered configuration system combines global settings with case-specific parameters, allowing for flexible and reusable pipeline definitions.
-- **Standalone & Pipeline Execution**: Plugins can be run for an entire pipeline or executed individually for debugging and testing.
+- **Case Templating**: Quickly scaffold new cases using predefined templates.
+- **Centralized Data Management**: A powerful `DataHub` manages the lifecycle of all data, providing in-memory caching, lazy loading, and automatic persistence.
+- **Hierarchical Configuration**: A multi-layered configuration system for flexible and reusable pipeline definitions.
+- **Modern Python Structure**: Uses the standard `src` layout for a clean and maintainable codebase.
 
 ## Project Structure
 
 ```
 .
-├── cases
-│   └── ...
-├── config
-│   ├── global.yaml
-│   └── logging.yaml
-├── core
-│   ├── config_manager.py
-│   ├── data_hub.py
-│   └── ...
-├── modules
-│   ├── base_plugin.py
-│   └── ...
-├── templates
-│   └── demo_case.yaml
-├── scripts
-│   └── generation.py
+├── cases/
+├── config/
+├── logs/
+├── templates/
+├── src/
+│   └── nexus/
+│       ├── __init__.py
+│       ├── core/
+│       ├── modules/
+│       └── scripts/
+├── tests/
 ├── .gitignore
-├── run.py
-└── README.md
+├── pyproject.toml
+├── README.md
+└── run.py
 ```
 
 ## Usage: The Unified CLI
 
-All interactions with the framework are handled through the central `run.py` script. You can see a full list of commands by running:
+All interactions with the framework are handled through the central `run.py` script.
 ```bash
 python run.py --help
 ```
 
-### Running a Pipeline
-
-To execute a full pipeline for a given case (e.g., `demo`):
-```bash
-python run.py pipeline --case demo
-```
-
 ### Creating a New Case from a Template
 
-You can easily create a new case using a template from the `templates` directory. For example, to create a new case named `my_new_case` using the `demo` template, run:
+To create a new case, use the `--template` argument. For example, to create `my_new_case` using the `demo` template, run:
 
 ```bash
 python run.py pipeline --case my_new_case --template demo
 ```
 
 This command will:
-1. Create the `cases/my_new_case/` directory if it doesn't exist.
+1. Create the `cases/my_new_case/` directory.
 2. Copy `templates/demo_case.yaml` to `cases/my_new_case/case.yaml`.
-3. Execute the pipeline for `my_new_case`.
+3. Execute the pipeline for the new case.
 
-### Running a Single Plugin
+### Running an Existing Pipeline
 
-For debugging or testing, you can run any plugin from a case in isolation. For example, to run only the `InitialDataReader` from the `demo` case:
+Once a case exists, you can run it without the `--template` argument:
 ```bash
-python run.py plugin InitialDataReader --case demo
+python run.py pipeline --case my_new_case
 ```
 
 ### Utility Commands
@@ -88,11 +77,33 @@ python run.py plugin InitialDataReader --case demo
   python run.py generate-docs
   ```
 
+- **Run a Single Plugin**: Executes a specific plugin from a case definition. This is useful for debugging or testing individual components.
+  ```bash
+  python run.py plugin <PluginName> --case <case_name>
+  ```
+  Replace `<PluginName>` with the exact class name of the plugin.
+  Replace `<case_name>` with the name of the case directory (e.g., `demo`).
+
+  **Examples using the `demo` case:**
+  ```bash
+  # Run the InitialDataReader plugin for the demo case
+  python run.py plugin InitialDataReader --case demo
+
+  # Run the LatencyCompensator plugin for the demo case
+  python run.py plugin LatencyCompensator --case demo
+
+  # Run the FrameRenderer plugin for the demo case
+  python run.py plugin FrameRenderer --case demo
+
+  # Run the VideoCreator plugin for the demo case
+  python run.py plugin VideoCreator --case demo
+  ```
+
 ## How It Works
 
 ### 1. The `case.yaml`
 
-This file is the heart of a pipeline run. It can be created manually or generated from a template. It defines:
+This file is the heart of a pipeline run, created from a template or manually. It defines:
 - **`data_sources`**: A catalog of all data "nouns" in the pipeline.
 - **`pipeline`**: A list of the plugins (the "verbs") to execute in sequence.
 
@@ -102,23 +113,23 @@ The `DataHub` is a central object passed through the pipeline that manages all d
 
 ### 3. Plugins
 
-A plugin is a Python class that inherits from `BasePlugin` and implements the `run` method.
+A plugin is a Python class that inherits from `BasePlugin` and implements the `run` method. New plugins should be added to `src/nexus/modules/`.
 
 ## Framework in Practice: The Demo Case
 
-The `demo` case provides a concrete example of how the framework's components work together. Let's trace the execution step by step when you run `python run.py pipeline --case demo`.
+Let's trace the execution for `python run.py pipeline --case demo --template demo`.
 
-1.  **Initiation**: The `main` function in `run.py` parses the `pipeline` command and calls the `run_pipeline` function, passing it the `demo` case name.
+1.  **Initiation**: The `main` function in `run.py` parses the command.
 
-2.  **Configuration Loading**: The `PipelineRunner` initializes the `ConfigManager`, which loads and merges `global.yaml` and `cases/demo/case.yaml`.
+2.  **Templating**: The script sees the `--template demo` argument and copies `templates/demo_case.yaml` to `cases/demo/case.yaml`.
 
-3.  **DataHub Creation**: The `PipelineRunner` initializes the `DataHub`, populating its registry with the data sources defined in `case.yaml`.
+3.  **Configuration Loading**: The `PipelineRunner` initializes the `ConfigManager`, which loads and merges `global.yaml` and the newly created `cases/demo/case.yaml`.
 
-4.  **Pipeline Execution**: The `PipelineRunner` iterates through the plugins defined in the `pipeline` section of `case.yaml`, executing each one in sequence.
+4.  **DataHub Creation**: The `PipelineRunner` initializes the `DataHub` with the data sources defined in the case file.
 
-5.  **Completion**: After the pipeline finishes, `run.py` prints a summary of the `DataHub`'s final state.
+5.  **Pipeline Execution**: The `PipelineRunner` iterates through the plugins defined in the `pipeline` section, executing each one in sequence.
 
-This walkthrough demonstrates the core principles: a declarative pipeline defined in YAML, orchestrated by the `PipelineRunner`, with all data flowing through and managed by the central `DataHub`.
+6.  **Completion**: After the pipeline finishes, `run.py` prints a summary of the `DataHub`'s final state.
 
 ## Future Development
 

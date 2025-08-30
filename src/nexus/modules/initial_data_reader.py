@@ -1,5 +1,5 @@
-from modules.base_plugin import BasePlugin
-from core.data_hub import DataHub
+from .base_plugin import BasePlugin
+from ..core.data_hub import DataHub
 
 class InitialDataReader(BasePlugin):
     """

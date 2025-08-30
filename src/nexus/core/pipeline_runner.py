@@ -4,9 +4,9 @@ import logging
 from pathlib import Path
 import yaml
 
-from core.config_manager import ConfigManager
-from core.logger import setup_logging
-from core.data_hub import DataHub
+from .config_manager import ConfigManager
+from .logger import setup_logging
+from .data_hub import DataHub
 
 class PipelineRunner:
     """
@@ -32,7 +32,7 @@ class PipelineRunner:
 
     def _find_plugins(self) -> dict:
         plugin_map = {}
-        modules_root = self.project_root / "modules"
+        modules_root = self.project_root / "src" / "nexus" / "modules"
         for py_file in modules_root.rglob("*.py"):
             if py_file.name.startswith(("__", "base_")):
                 continue
@@ -55,7 +55,7 @@ class PipelineRunner:
             plugin_info = self.plugin_map[plugin_identifier]
             file_path = plugin_info["file_path"]
             
-            spec = importlib.util.spec_from_file_location(plugin_identifier, file_path)
+            spec = importlib.util.spec_from_file_location(plugin_info["module_path"], file_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return getattr(module, plugin_identifier), file_path

@@ -8,14 +8,13 @@ import yaml
 import importlib
 import pkgutil
 
-# To import from the parent directory (core), we adjust the path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
+from nexus import modules
+from nexus.core.config_manager import ConfigManager
+from nexus.core.data_hub import DataHub
+from nexus.modules.base_plugin import BasePlugin
 
-import modules
-from core.config_manager import ConfigManager
-from core.data_hub import DataHub
-from modules.base_plugin import BasePlugin
+# The project root is 4 levels up from this file (src/nexus/core/plugin_helper.py)
+project_root = Path(__file__).resolve().parent.parent.parent.parent
 
 logger = logging.getLogger(__name__)
 
