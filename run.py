@@ -18,9 +18,14 @@ from nexus.scripts.generation import generate_data, generate_plugin_documentatio
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
+from nexus.core.logger import setup_logging # Added import
+
 def run_pipeline(args):
     """Handles the 'pipeline' command."""
     cli_overrides = {}  # TODO: Parse CLI args for config overrides
+
+    # Set up logging for the pipeline run
+    setup_logging(case_name=args.case) # Moved setup_logging here
 
     # Initialize ConfigManager to resolve cases_root
     config_manager = ConfigManager(project_root=str(project_root), cli_args=cli_overrides)
@@ -68,9 +73,9 @@ def run_pipeline(args):
         )
         final_data_hub = runner.run()
 
-        logger.info("\n====== Final DataHub State ======")
-        logger.info(json.dumps(final_data_hub.summary(), indent=2))
-        logger.info("=====================================")
+        logger.debug("\n====== Final DataHub State ======")
+        logger.debug(json.dumps(final_data_hub.summary(), indent=2))
+        logger.debug("=====================================")
 
     except Exception as e:
         logger.error(f"\nAn error occurred during pipeline execution: {e}", exc_info=True)

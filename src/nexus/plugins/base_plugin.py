@@ -21,12 +21,13 @@ class BasePlugin(ABC):
     def case_path(self) -> Path:
         """
         Convenience property to access the root path of the current case.
+        This relies on the framework to inject 'case_path' into the config.
         """
-        path_str = self.config.get('case_path')
-        if not path_str:
-            self.logger.warning(f"case_path not found in config for {self.__class__.__name__}. Returning current working directory.")
-            return Path.cwd()
-        return Path(path_str)
+        try:
+            return Path(self.config['case_path'])
+        except KeyError:
+            self.logger.error("'case_path' not found in plugin configuration. This is a framework error.")
+            raise
 
     @abstractmethod
     def run(self, data_hub: DataHub):

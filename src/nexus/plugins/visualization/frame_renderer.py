@@ -28,7 +28,18 @@ class FrameRenderer(BasePlugin):
             return
 
         # --- Prepare Output Directory ---
-        output_dir = self.case_path / self.config.get('output_dir', 'rendered_frames')
+        # Get output directory - support both data source and direct config
+        output_dir_name = self.config.get('outputs', [None])[0]
+        if output_dir_name:
+            # Use data source for output directory
+            output_dir = data_hub.get_path(output_dir_name)
+            if not output_dir:
+                self.logger.error(f"Could not get output directory path for data source: {output_dir_name}")
+                return
+        else:
+            # Fallback to config parameter
+            output_dir = self.case_path / self.config.get('output_dir', 'rendered_frames')
+            
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True)

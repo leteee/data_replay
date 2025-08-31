@@ -1,4 +1,0 @@
-# Default configuration for VideoCreator plugin
-input_dir: "plots"
-output_path: "output.mp4"
-fps: 10

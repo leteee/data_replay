@@ -1,0 +1,26 @@
+# Default configuration for FrameRenderer plugin
+# This plugin renders predicted data onto video frames.
+
+# Behavior parameters:
+output_dir: "intermediate/rendered_frames"
+zoom_factor: 5
+circle_radius_px: 15
+circle_width_px: 3
+
+# Default data sources for this plugin:
+# These are examples and should be overridden in actual case configurations
+data_sources:
+  # Input video manifest
+  video_manifest:
+    path: "raw_data/video_manifest.csv"
+    description: "Input video frame manifest"
+  
+  # Input predicted states
+  predicted_states:
+    path: "intermediate/predicted_states.csv"
+    description: "Input predicted vehicle states"
+
+# I/O contract for the plugin
+inputs:
+  - video_manifest
+  - predicted_states

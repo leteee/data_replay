@@ -19,7 +19,7 @@ class InitialDataReader(BasePlugin):
             return
 
         for data_name in output_names:
-            self.logger.info(f"Triggering initial load for data source: '{data_name}'")
+            self.logger.debug(f"Triggering initial load for data source: '{data_name}'")
             # The get method will load the data and cache it in the hub.
             # We don't need to do anything with the returned dataframe here.
             data_hub.get(data_name)

@@ -1,0 +1,23 @@
+# Default configuration for InitialDataReader plugin
+# This plugin loads initial data defined in the data_sources section.
+
+# Behavior parameters:
+
+# Default data sources for this plugin:
+# These are examples and should be overridden in actual case configurations
+data_sources:
+  # Default input data source
+  default_input:
+    path: "raw_data/video_manifest.csv"
+    description: "Default input data source"
+  
+  # Default output data source
+  default_output:
+    path: "raw_data/latent_measurements.csv"
+    description: "Default output data source"
+
+# The list of data sources to be loaded when this plugin runs.
+# By default, it loads the two sources defined above.
+outputs:
+  - default_input
+  - default_output

@@ -8,10 +8,11 @@ import yaml
 import importlib
 import pkgutil
 
-from nexus import modules
+from nexus import plugins
 from nexus.core.config_manager import ConfigManager
 from nexus.core.data_hub import DataHub
-from nexus.modules.base_plugin import BasePlugin
+from nexus.plugins.base_plugin import BasePlugin
+from nexus.core.plugin_config_processor import process_plugin_configuration, extract_plugin_config_entry
 
 # The project root is 4 levels up from this file (src/nexus/core/plugin_helper.py)
 project_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -20,19 +21,19 @@ logger = logging.getLogger(__name__)
 
 def find_plugin_class(plugin_name: str) -> type[BasePlugin] | None:
     """
-    Scans the 'modules' directory to find a plugin class by its name.
+    Scans the 'plugins' directory to find a plugin class by its name.
     Args:
         plugin_name: The string name of the plugin class to find.
     Returns:
         The plugin class type if found, otherwise None.
     """
-    for importer, modname, ispkg in pkgutil.walk_packages(path=modules.__path__,
-                                                          prefix=modules.__name__+'.',
+    for importer, modname, ispkg in pkgutil.walk_packages(path=plugins.__path__,
+                                                          prefix=plugins.__name__+'.',
                                                           onerror=lambda x: None):
         module = importlib.import_module(modname)
         for name, obj in inspect.getmembers(module, inspect.isclass):
             if name == plugin_name and issubclass(obj, BasePlugin) and obj is not BasePlugin:
-                logger.info(f"Found plugin class '{plugin_name}' in module '{modname}'")
+                logger.debug(f"Found plugin class '{plugin_name}' in module '{modname}'")
                 return obj
     logger.error(f"Plugin class '{plugin_name}' not found.")
     return None
@@ -69,29 +70,43 @@ def execute_plugin(plugin_class: type[BasePlugin], case_name: str):
     with open(case_yaml_path, 'r', encoding='utf-8') as f:
         case_config = yaml.safe_load(f)
 
-    plugin_specific_config = None
-    for step in case_config.get("pipeline", []):
-        if step.get("plugin") == plugin_class.__name__:
-            plugin_specific_config = step
-            logger.info(f"Found config for {plugin_class.__name__} in case.yaml")
-            break
+    plugin_specific_config = extract_plugin_config_entry(case_config, plugin_class)
     
     if plugin_specific_config is None:
+        # If no config is found, we can proceed with an empty config, 
+        # but the current logic requires a pipeline entry.
         raise ValueError(f"Plugin '{plugin_class.__name__}' not found in the pipeline of '{case_yaml_path}'")
 
     # --- Initialize DataHub ---
-    data_sources = case_config.get("data_sources", {})
-    data_hub = DataHub(case_path=case_path, data_sources=data_sources)
+    # Get the plugin's default config to find its default data sources
+    plugin_default_yaml_path = Path(inspect.getfile(plugin_class)).with_suffix('.yaml')
+    with open(plugin_default_yaml_path, 'r', encoding='utf-8') as f:
+        plugin_default_config = yaml.safe_load(f)
+
+    # Merge data sources: case config overrides plugin defaults
+    merged_sources = plugin_default_config.get('data_sources', {})
+    merged_sources.update(case_config.get("data_sources", {}))
+    data_hub = DataHub(case_path=case_path, data_sources=merged_sources)
 
     # --- Instantiate and Run the Plugin ---
     logger.info(f"--- Running {plugin_class.__name__} for case: {case_path.name} ---")
-    plugin_instance = plugin_class(config=plugin_specific_config)
+    
+    # Use shared configuration processing logic
+    final_plugin_config = process_plugin_configuration(
+        plugin_class=plugin_class,
+        plugin_config_entry=plugin_specific_config,
+        case_config=case_config,
+        case_path=case_path,
+        project_root=project_root
+    )
+    
+    plugin_instance = plugin_class(config=final_plugin_config)
     plugin_instance.run(data_hub)
 
     logger.info(f"--- Finished Run for {plugin_class.__name__} ---")
-    print("\n====== Final DataHub State ======")
-    print(json.dumps(data_hub.summary(), indent=2, ensure_ascii=False))
-    print("=============================")
+    logger.debug("\n====== Final DataHub State ======")
+    logger.debug(json.dumps(data_hub.summary(), indent=2, ensure_ascii=False))
+    logger.debug("=============================")
 
 
 def run_single_plugin_by_name(plugin_name: str, case_name: str):

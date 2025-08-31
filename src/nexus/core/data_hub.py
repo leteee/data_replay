@@ -1,19 +1,24 @@
-import pandas as pd
-from pathlib import Path
+'''
+This module defines the DataHub, the central component for data management.
+'''
+
 import logging
+from pathlib import Path
+from typing import Any, Dict
+
+from .handlers import handler_registry
 
 logger = logging.getLogger(__name__)
 
 class DataHub:
     """
     Manages the state of data in the pipeline.
-    - Caches data in memory.
+    - Caches data in memory (lazy loading).
     - Tracks persisted data files.
-    - Lazily loads data from disk on demand.
-    - Automatically persists data when registered if a path is defined.
+    - Uses a handler system for loading and saving different file formats.
     """
 
-    def __init__(self, case_path: Path, data_sources: dict = None):
+    def __init__(self, case_path: Path, data_sources: Dict[str, Any] = None):
         """
         Initializes the DataHub.
         Args:
@@ -21,57 +26,56 @@ class DataHub:
             data_sources: A dictionary defining the data items and their file paths.
         """
         self._case_path = case_path
-        self._data = {}  # In-memory cache: {name: DataFrame}
-        self._registry = {}  # Maps data name to its absolute file path: {name: Path}
+        self._data: Dict[str, Any] = {}  # In-memory cache: {name: data}
+        self._registry: Dict[str, Dict[str, Any]] = {}  # Maps data name to its info {path, handler}
 
         if data_sources:
             for name, source_info in data_sources.items():
                 if "path" in source_info:
                     path = Path(source_info["path"])
                     if not path.is_absolute():
-                        path = self._case_path.parent.parent / path # project root
-                    self._registry[name] = path
+                        # Resolve relative paths from the case directory
+                        path = self._case_path / path
+                    
+                    self._registry[name] = {
+                        "path": path,
+                        "handler": source_info.get("handler") # Can be None
+                    }
         
         logger.info(f"DataHub initialized for case {case_path.name} with {len(self._registry)} registered sources.")
 
-    def register(self, name: str, data: pd.DataFrame):
+    def register(self, name: str, data: Any):
         """
         Registers a data object with the Hub and persists it if a path is registered.
         Args:
             name: The unique name of the data.
-            data: The pandas DataFrame to register.
+            data: The data to register (DataFrame, dict, list, etc.).
         """
-        if not isinstance(data, pd.DataFrame):
-            raise TypeError(f"Data '{name}' is not a DataFrame and cannot be registered.")
-
         self._data[name] = data
         logger.debug(f"Data '{name}' registered in memory.")
 
         # Auto-persist if a path is defined in the registry
         if name in self._registry:
-            path = self._registry[name]
+            source_info = self._registry[name]
+            path = source_info["path"]
+            handler_name = source_info.get("handler")
+
             path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                if path.suffix == '.parquet':
-                    data.to_parquet(path)
-                elif path.suffix == '.csv':
-                    data.to_csv(path, index=False)
-                else:
-                    logger.warning(f"Unsupported file type for auto-persistence: {path.suffix}. Data '{name}' not persisted.")
-                    return
+                handler = handler_registry.get_handler(path, handler_name=handler_name)
+                handler.save(data, path)
                 logger.info(f"Data '{name}' automatically persisted to: {path}")
             except Exception as e:
                 logger.error(f"Failed to persist data '{name}' to {path}: {e}")
 
-
-    def get(self, name: str) -> pd.DataFrame:
+    def get(self, name: str) -> Any:
         """
         Retrieves data from the Hub.
         If data is not in memory, it's lazy-loaded from the registered file path.
         Args:
             name: The name of the data to retrieve.
         Returns:
-            The requested pandas DataFrame.
+            The requested data (DataFrame, dict, list, etc.).
         Raises:
             KeyError: If the data is not found in memory or in the registry.
         """
@@ -80,27 +84,39 @@ class DataHub:
             return self._data[name]
         
         if name in self._registry:
-            path = self._registry[name]
+            source_info = self._registry[name]
+            path = source_info["path"]
+            handler_name = source_info.get("handler")
+
             logger.info(f"Lazy loading data '{name}' from: {path}...")
             
-            if not path.exists():
+            # For directories, we don't require them to exist beforehand
+            # For files, they must exist
+            if not path.exists() and not self._is_directory_handler(handler_name):
                 raise FileNotFoundError(f"File for data source '{name}' not found at: {path}")
 
             try:
-                if path.suffix == '.parquet':
-                    df = pd.read_parquet(path)
-                elif path.suffix == '.csv':
-                    df = pd.read_csv(path)
-                else:
-                    raise ValueError(f"Unsupported file type for lazy loading: {path.suffix}")
-                
-                self._data[name] = df  # Cache in memory after loading
-                return df
+                handler = handler_registry.get_handler(path, handler_name=handler_name)
+                data = handler.load(path)
+                self._data[name] = data  # Cache in memory after loading
+                return data
             except Exception as e:
                 logger.error(f"Failed to load data '{name}' from {path}: {e}")
                 raise
             
         raise KeyError(f"Data '{name}' not found in DataHub.")
+
+    def _is_directory_handler(self, handler_name: str) -> bool:
+        """
+        Check if the handler is a directory handler.
+        
+        Args:
+            handler_name: Name of the handler
+            
+        Returns:
+            True if it's a directory handler, False otherwise
+        """
+        return handler_name and ('DirectoryHandler' in handler_name or 'directory' in handler_name.lower())
 
     def get_path(self, name: str) -> Path | None:
         """
@@ -110,7 +126,9 @@ class DataHub:
         Returns:
             The Path object if it exists, otherwise None.
         """
-        return self._registry.get(name)
+        if name in self._registry:
+            return self._registry[name]["path"]
+        return None
 
     def __contains__(self, name: str) -> bool:
         """Allows using the `in` keyword to check if data exists."""
@@ -122,5 +140,10 @@ class DataHub:
         """
         return {
             "in_memory_data": list(self._data.keys()),
-            "registered_files": {name: str(path) for name, path in self._registry.items()}
+            "registered_files": {
+                name: {
+                    "path": str(info["path"]),
+                    "handler": info.get("handler", "default (by extension)")
+                } for name, info in self._registry.items()
+            }
         }

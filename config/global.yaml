@@ -1,5 +1,3 @@
 cases_root: "./cases"
 log_level: "INFO"
-video_decoder: "opencv"
-sync_method: "interpolation"
-plugins_dir: "./modules"
+plugin_enable: True

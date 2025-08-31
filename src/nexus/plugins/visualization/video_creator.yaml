@@ -1,0 +1,26 @@
+# Default configuration for VideoCreator plugin
+# This plugin creates a video from a sequence of images.
+
+# Behavior parameters:
+fps: 10
+
+# Default data sources for this plugin:
+# These are examples and should be overridden in actual case configurations
+data_sources:
+  # Input frames directory
+  input_frames:
+    path: "intermediate/rendered_frames"
+    description: "Input frames directory"
+    handler: DirectoryHandler
+  
+  # Output video file
+  output_video:
+    path: "output/replay_video.mp4"
+    description: "Output video file"
+
+# I/O contract for the plugin
+inputs:
+  - input_frames
+
+outputs:
+  - output_video

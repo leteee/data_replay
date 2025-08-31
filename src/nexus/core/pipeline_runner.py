@@ -7,6 +7,7 @@ import yaml
 from .config_manager import ConfigManager
 from .logger import setup_logging
 from .data_hub import DataHub
+from .plugin_config_processor import process_plugin_configuration, extract_plugin_config_entry
 
 class PipelineRunner:
     """
@@ -17,23 +18,53 @@ class PipelineRunner:
     def __init__(self, project_root: str, case_path: str, cli_args: dict = None):
         self.project_root = Path(project_root).resolve()
         self.case_path = Path(case_path).resolve()
-
-        setup_logging(case_name=self.case_path.name)
         self.logger = logging.getLogger(__name__)
+        self.cli_args = cli_args or {}
 
         self.case_config = load_yaml(self.case_path / "case.yaml")
-        
-        data_sources = self.case_config.get("data_sources", {})
-        self.data_hub = DataHub(case_path=self.case_path, data_sources=data_sources)
-        
-        self.config_manager = ConfigManager(project_root=str(self.project_root), cli_args=cli_args)
+        self.config_manager = ConfigManager(project_root=str(self.project_root), cli_args=self.cli_args)
         self.plugin_map = self._find_plugins()
-        self.logger.info(f"Found {len(self.plugin_map)} available plugins.")
+        self.logger.debug(f"Found {len(self.plugin_map)} available plugins.")
+
+        # --- New DataHub Initialization Logic ---
+        all_data_sources = self._get_all_data_sources()
+        self.data_hub = DataHub(case_path=self.case_path, data_sources=all_data_sources)
+        # --- End of New Logic ---
+
+    def _get_all_data_sources(self) -> dict:
+        """
+        Collects and merges data_sources from all plugins in the pipeline and the case file.
+        Case-level data_sources override plugin-level ones.
+        """
+        merged_sources = {}
+
+        # 1. Collect data_sources from default plugin configs
+        for plugin_config_entry in self.case_config.get('pipeline', []):
+            plugin_name = plugin_config_entry['plugin']
+            try:
+                _, plugin_file_path = self._load_plugin_class(plugin_name)
+                if plugin_file_path:
+                    default_config_path = Path(plugin_file_path).with_suffix('.yaml')
+                    default_config = load_yaml(default_config_path)
+                    plugin_sources = default_config.get('data_sources', {})
+                    # Lower priority: only add if not already present
+                    for name, source in plugin_sources.items():
+                        if name not in merged_sources:
+                            merged_sources[name] = source
+            except ValueError as e:
+                self.logger.warning(f"Could not load plugin '{plugin_name}' during data_source scan: {e}")
+
+        # 2. Merge data_sources from the case file (higher priority)
+        case_sources = self.case_config.get('data_sources', {})
+        merged_sources.update(case_sources)
+        
+        self.logger.info(f"DataHub will be initialized with {len(merged_sources)} merged data sources.")
+        return merged_sources
 
     def _find_plugins(self) -> dict:
         plugin_map = {}
-        modules_root = self.project_root / "src" / "nexus" / "modules"
-        for py_file in modules_root.rglob("*.py"):
+        plugins_root = self.project_root / "src" / "nexus" / "plugins"
+        for py_file in plugins_root.rglob("*.py"):
             if py_file.name.startswith(("__", "base_")):
                 continue
             
@@ -43,56 +74,80 @@ class PipelineRunner:
         return plugin_map
 
     def _load_plugin_class(self, plugin_identifier: str):
+        """
+        Loads a plugin class using a unified, standard import mechanism.
+        Args:
+            plugin_identifier (str): The simple class name or full module path of the plugin.
+        Returns:
+            A tuple of (plugin_class, plugin_file_path)
+        """
         if "." in plugin_identifier:
+            # Full path provided: extract class name and module path
             module_path, class_name = plugin_identifier.rsplit('.', 1)
-            module = importlib.import_module(module_path)
-            file_path = str(self.project_root / Path(module_path.replace('.', '/')) / f"{class_name.lower()}.py")
-            return getattr(module, class_name), file_path
         else:
+            # Simple name provided: look up details in the plugin map
             if plugin_identifier not in self.plugin_map:
-                raise ValueError(f"Plugin not found in 'modules': {plugin_identifier}")
-            
+                raise ValueError(f"Plugin '{plugin_identifier}' not found in scanned modules.")
             plugin_info = self.plugin_map[plugin_identifier]
-            file_path = plugin_info["file_path"]
+            class_name = plugin_identifier
+            module_path = plugin_info["module_path"]
+
+        try:
+            # Use the standard, robust way to import the module
+            module = importlib.import_module(module_path)
+            plugin_class = getattr(module, class_name)
             
-            spec = importlib.util.spec_from_file_location(plugin_info["module_path"], file_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return getattr(module, plugin_identifier), file_path
+            # Get the file path directly from the loaded module
+            file_path = Path(module.__file__)
+            
+            return plugin_class, file_path
+        except (ImportError, AttributeError, KeyError) as e:
+            raise ValueError(f"Could not load plugin '{plugin_identifier}'. Module: '{module_path}', Class: '{class_name}'. Reason: {e}")
 
     def run(self):
         """
         Executes the entire pipeline as defined in the case configuration.
         """
-        pipeline_steps = self.case_config.get("pipeline", [])
-        self.logger.info(f"Starting pipeline execution with {len(pipeline_steps)} steps.")
+        self.logger.info(f"Starting pipeline for case: {self.case_path.name}")
+        
+        global_plugin_enable = self.config_manager.global_config.get('plugin_enable', True)
 
-        for i, step_config in enumerate(pipeline_steps):
-            plugin_identifier = step_config["plugin"]
-            self.logger.info(f"\n--- Step {i+1}/{len(pipeline_steps)}: Executing Plugin [{plugin_identifier}] ---")
+        for plugin_config in self.case_config.get('pipeline', []):
+            plugin_name = plugin_config['plugin']
+            
+            plugin_enabled = plugin_config.get('enable', global_plugin_enable)
 
-            PluginClass, plugin_file_path = self._load_plugin_class(plugin_identifier)
+            if not plugin_enabled:
+                self.logger.info(f"Skipping plugin: {plugin_name} (disabled)")
+                continue
 
-            # Merge the plugin-specific config from the pipeline step into the final config
-            # This allows overriding default plugin configs per step
-            case_override_config = step_config.get("config", {})
-            case_override_config['case_path'] = str(self.case_path)
+            self.logger.info(f"--- Running plugin: {plugin_name} ---")
+            self.logger.info(f"PipelineRunner: Processing plugin_config: {plugin_config}") # Added log
+            
+            try:
+                plugin_class, plugin_file_path = self._load_plugin_class(plugin_name)
+                self.logger.debug(f"PipelineRunner: Loaded plugin_class: {plugin_class.__name__}, plugin_file_path: {plugin_file_path}")
+                
+                # Use shared configuration processing logic
+                final_plugin_config = process_plugin_configuration(
+                    plugin_class=plugin_class,
+                    plugin_config_entry=plugin_config,
+                    case_config=self.case_config,
+                    case_path=self.case_path,
+                    project_root=self.project_root
+                )
 
-            final_config = self.config_manager.get_plugin_config(
-                plugin_module_path=plugin_file_path,
-                case_config_override=case_override_config
-            )
+                # Inject data_hub into the final config
+                final_plugin_config['data_hub'] = self.data_hub
 
-            # Add inputs and outputs from the step config to the final_config
-            # so the plugin can access them
-            if 'inputs' in step_config:
-                final_config['inputs'] = step_config['inputs']
-            if 'outputs' in step_config:
-                final_config['outputs'] = step_config['outputs']
+                plugin_instance = plugin_class(
+                    config=final_plugin_config
+                )
+                plugin_instance.run(self.data_hub)
 
-            # Instantiate and run the plugin, passing the DataHub
-            plugin_instance = PluginClass(config=final_config)
-            plugin_instance.run(self.data_hub)
+            except Exception as e:
+                self.logger.error(f"Pipeline failed at plugin '{plugin_name}'. Reason: {e}", exc_info=True)
+                break
 
         self.logger.info("\n--- Pipeline execution finished ---")
         return self.data_hub

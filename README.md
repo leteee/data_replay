@@ -113,7 +113,7 @@ The `DataHub` is a central object passed through the pipeline that manages all d
 
 ### 3. Plugins
 
-A plugin is a Python class that inherits from `BasePlugin` and implements the `run` method. New plugins should be added to `src/nexus/modules/`.
+A plugin is a Python class that inherits from `BasePlugin` and implements the `run` method. New plugins should be added to `src/nexus/plugins/`.
 
 ## Framework in Practice: The Demo Case
 

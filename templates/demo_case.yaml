@@ -1,39 +1,71 @@
 case_name: latency_compensated_replay
 description: "A demo case for replaying latent vehicle data with prediction and visualization."
 
-# Centralized definition of all data sources and their persistence paths
-data_sources:
-  video_manifest:
-    path: "cases/demo/raw_data/video_manifest.csv"
-  latent_measurements:
-    path: "cases/demo/raw_data/latent_measurements.csv"
-  predicted_states:
-    path: "cases/demo/intermediate/predicted_states.csv"
+# ==============================================================================
+# Data Sources
+# ------------------------------------------------------------------------------
+# This section is now commented out to demonstrate that the framework can
+# fall back to the default configuration defined within each plugin.
+# ==============================================================================
+# data_sources:
+#   video_manifest:
+#     path: "raw_data/video_manifest.csv"
+#   latent_measurements:
+#     path: "raw_data/latent_measurements.csv"
+#   predicted_states:
+#     path: "intermediate/predicted_states.csv"
+#   raw_video_file:
+#     path: "raw_data/video.mp4"
+#     handler: nexus.core.handlers.file.FileHandler
+#   rendered_frames_dir:
+#     path: "intermediate/rendered_frames"
+#     handler: DirectoryHandler
+#   replay_video:
+#     path: "output/replay_video.mp4"
+#     handler: FileHandler
 
+# ==============================================================================
+# Pipeline Configuration
+# ------------------------------------------------------------------------------
+# The inputs and outputs for each plugin are commented out. The pipeline will
+# now rely on the default I/O configuration specified in each plugin's own
+# .yaml file (e.g., latency_compensator.yaml).
+# ==============================================================================
 pipeline:
-  - plugin: InitialDataReader
-    outputs: ["video_manifest", "latent_measurements"]
+  # ----------------------------------------------------------------------------
+  # Plugin 1: InitialDataReader
+  # ----------------------------------------------------------------------------
+  - plugin: nexus.plugins.initial_data_reader.InitialDataReader
+    # enable: true
+    config:
+      # outputs: ["video_manifest", "latent_measurements"]
 
+  # ----------------------------------------------------------------------------
+  # Plugin 2: LatencyCompensator
+  # ----------------------------------------------------------------------------
   - plugin: LatencyCompensator
-    inputs: ["latent_measurements"]
-    outputs: ["predicted_states"]
+    # enable: true
     config:
+      # inputs: ["latent_measurements"]
+      # outputs: ["predicted_states"]
       latency_to_compensate_s: 0.2
-      process_noise: 0.1
-      measurement_noise: 0.5
-      fps: 50
 
+  # ----------------------------------------------------------------------------
+  # Plugin 3: FrameRenderer
+  # ----------------------------------------------------------------------------
   - plugin: FrameRenderer
-    inputs: ["video_manifest", "predicted_states"]
+    # enable: true
     config:
-      # Path is relative to the case directory (cases/demo)
+      # inputs: ["video_manifest", "predicted_states"]
       output_dir: "intermediate/rendered_frames"
-      zoom_factor: 5.0
-      
+      zoom_factor: 5
 
+  # ----------------------------------------------------------------------------
+  # Plugin 4: VideoCreator
+  # ----------------------------------------------------------------------------
   - plugin: VideoCreator
+    # enable: true
     config:
-      # Paths are relative to the case directory (cases/demo)
-      input_dir: "intermediate/rendered_frames"
-      output_path: "output/replay_video.mp4"
+      # inputs: ["rendered_frames_dir"]
+      # outputs: ["replay_video"]
       fps: 50
