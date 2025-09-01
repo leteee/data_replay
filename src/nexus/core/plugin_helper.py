@@ -1,18 +1,15 @@
 import argparse
 import logging
-import json
 from pathlib import Path
-import sys
 import inspect
-import yaml
 import importlib
 import pkgutil
 
 from nexus import plugins
-from nexus.core.config_manager import ConfigManager
-from nexus.core.data_hub import DataHub
 from nexus.plugins.base_plugin import BasePlugin
-from nexus.core.plugin_config_processor import process_plugin_configuration, extract_plugin_config_entry
+from nexus.core.execution_context import ExecutionContext
+from nexus.core.plugin_executor import PluginExecutor
+from nexus.core.config_manager import ConfigManager
 
 # The project root is 4 levels up from this file (src/nexus/core/plugin_helper.py)
 project_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -38,108 +35,56 @@ def find_plugin_class(plugin_name: str) -> type[BasePlugin] | None:
     logger.error(f"Plugin class '{plugin_name}' not found.")
     return None
 
-def execute_plugin(plugin_class: type[BasePlugin], case_name: str):
-    """
-    Core logic to execute a single plugin within a given case context.
-    This function is designed to be called by different CLI wrappers.
-    Args:
-        plugin_class: The plugin class to run.
-        case_name: The name of the case directory.
-    Raises:
-        FileNotFoundError: If case path or configs are not found.
-        ValueError: If the plugin is not found in the case config.
-    """
-    # Initialize ConfigManager to resolve cases_root
-    # project_root is already defined at the top of this file
-    config_manager = ConfigManager(project_root=str(project_root))
-    cases_root = config_manager.get_cases_root_path()
-    case_arg_path = Path(case_name)
-    if case_arg_path.is_absolute():
-        case_path = case_arg_path
-    else:
-        case_path = cases_root / case_arg_path
-
-    if not case_path.is_dir():
-        raise FileNotFoundError(f"Case path not found or is not a directory: {case_path}")
-
-    # --- Load Configuration ---
-    case_yaml_path = case_path / "case.yaml"
-    if not case_yaml_path.exists():
-        raise FileNotFoundError(f"Case config file not found: {case_yaml_path}")
-
-    with open(case_yaml_path, 'r', encoding='utf-8') as f:
-        case_config = yaml.safe_load(f)
-
-    plugin_specific_config = extract_plugin_config_entry(case_config, plugin_class)
-    
-    if plugin_specific_config is None:
-        # If no config is found, we can proceed with an empty config, 
-        # but the current logic requires a pipeline entry.
-        raise ValueError(f"Plugin '{plugin_class.__name__}' not found in the pipeline of '{case_yaml_path}'")
-
-    # --- Initialize DataHub ---
-    # Get the plugin's default config to find its default data sources
-    plugin_default_yaml_path = Path(inspect.getfile(plugin_class)).with_suffix('.yaml')
-    with open(plugin_default_yaml_path, 'r', encoding='utf-8') as f:
-        plugin_default_config = yaml.safe_load(f)
-
-    # Merge data sources: case config overrides plugin defaults
-    merged_sources = plugin_default_config.get('data_sources', {})
-    merged_sources.update(case_config.get("data_sources", {}))
-    data_hub = DataHub(case_path=case_path, data_sources=merged_sources)
-
-    # --- Instantiate and Run the Plugin ---
-    logger.info(f"--- Running {plugin_class.__name__} for case: {case_path.name} ---")
-    
-    # Use shared configuration processing logic
-    final_plugin_config = process_plugin_configuration(
-        plugin_class=plugin_class,
-        plugin_config_entry=plugin_specific_config,
-        case_config=case_config,
-        case_path=case_path,
-        project_root=project_root
-    )
-    
-    plugin_instance = plugin_class(config=final_plugin_config)
-    plugin_instance.run(data_hub)
-
-    logger.info(f"--- Finished Run for {plugin_class.__name__} ---")
-    logger.debug("\n====== Final DataHub State ======")
-    logger.debug(json.dumps(data_hub.summary(), indent=2, ensure_ascii=False))
-    logger.debug("=============================")
-
-
 def run_single_plugin_by_name(plugin_name: str, case_name: str):
     """
-    Finds a plugin by name and executes it. Called by the main run.py CLI.
+    Finds a plugin by name and executes it using the new context and executor.
+    This is now a thin wrapper.
     """
-    plugin_class = find_plugin_class(plugin_name)
-    if plugin_class:
-        try:
-            execute_plugin(plugin_class, case_name)
-        except (FileNotFoundError, ValueError) as e:
-            logger.error(e)
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"An unexpected error occurred while running plugin '{plugin_name}': {e}", exc_info=True)
-            sys.exit(1)
+    try:
+        # Initialize ConfigManager just to resolve the case path
+        config_manager = ConfigManager(project_root=str(project_root))
+        cases_root = config_manager.get_cases_root_path()
+        case_arg_path = Path(case_name)
+        case_path = cases_root / case_arg_path if not case_arg_path.is_absolute() else case_arg_path
+
+        plugin_class = find_plugin_class(plugin_name)
+        if plugin_class is None:
+            raise ValueError(f"Plugin '{plugin_name}' could not be found.")
+
+        # All setup logic is now in ExecutionContext.
+        context = ExecutionContext(project_root=str(project_root), case_path=str(case_path))
+        
+        # All execution logic is now in PluginExecutor.
+        executor = PluginExecutor(context=context)
+        executor.execute(plugin_class)
+
+    except Exception as e:
+        logger.error(f"An error occurred while running plugin '{plugin_name}': {e}", exc_info=True)
+        raise
 
 def run_plugin_standalone(plugin_class: type[BasePlugin]):
     """
     A generic helper function to run a plugin standalone using argparse.
-    This is a thin wrapper around execute_plugin.
+    This is a thin wrapper around the core execution logic.
     """
     parser = argparse.ArgumentParser(description=f"Standalone runner for {plugin_class.__name__}")
-    parser.add_argument("--case", required=True, help="Name of the case directory under 'cases/'")
+    parser.add_argument("--case", required=True, help="Name of the case directory under 'cases/' or an absolute path.")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-
     try:
-        execute_plugin(plugin_class, args.case)
-    except (FileNotFoundError, ValueError) as e:
-        logger.error(e)
-        sys.exit(1)
+        # We still need to resolve the case path before creating the context
+        config_manager = ConfigManager(project_root=str(project_root))
+        cases_root = config_manager.get_cases_root_path()
+        case_arg_path = Path(args.case)
+        case_path = cases_root / case_arg_path if not case_arg_path.is_absolute() else case_arg_path
+
+        # All setup logic is now in ExecutionContext.
+        context = ExecutionContext(project_root=str(project_root), case_path=str(case_path))
+        
+        # All execution logic is now in PluginExecutor.
+        executor = PluginExecutor(context=context)
+        executor.execute(plugin_class)
+
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
-        sys.exit(1)
+        logger.error(f"An error occurred while running plugin '{plugin_class.__name__}': {e}", exc_info=True)
+        raise

@@ -65,6 +65,12 @@ class ConfigManager:
         self.global_config = load_yaml(global_config_path)
         logger.debug(f"Loaded global config from: {global_config_path}")
 
+    def load_case_config(self, case_path: str) -> dict:
+        """Loads the case.yaml file from a given case path."""
+        case_yaml_path = Path(case_path) / "case.yaml"
+        logger.debug(f"Loading case config from: {case_yaml_path}")
+        return load_yaml(case_yaml_path)
+
     def get_cases_root_path(self) -> Path:
         """
         Resolves the absolute path to the root directory where cases are stored.

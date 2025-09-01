@@ -10,22 +10,16 @@ project_root = Path(__file__).parent.resolve()
 sys.path.insert(0, str(project_root / "src"))
 
 from nexus.core.pipeline_runner import PipelineRunner
-from nexus.core.config_manager import ConfigManager
+from nexus.core.config_manager import ConfigManager, load_yaml
 from nexus.core.plugin_helper import run_single_plugin_by_name
 from nexus.scripts.generation import generate_data, generate_plugin_documentation
+from nexus.core.logger import get_logger, initialize_logging
 
-# Basic logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
-
-from nexus.core.logger import setup_logging # Added import
 
 def run_pipeline(args):
     """Handles the 'pipeline' command."""
     cli_overrides = {}  # TODO: Parse CLI args for config overrides
-
-    # Set up logging for the pipeline run
-    setup_logging(case_name=args.case) # Moved setup_logging here
 
     # Initialize ConfigManager to resolve cases_root
     config_manager = ConfigManager(project_root=str(project_root), cli_args=cli_overrides)
@@ -78,7 +72,7 @@ def run_pipeline(args):
         logger.debug("=====================================")
 
     except Exception as e:
-        logger.error(f"\nAn error occurred during pipeline execution: {e}", exc_info=True)
+        logger.error(f"An error occurred during pipeline execution: {e}", exc_info=True)
 
 def run_plugin(args):
     """Handles the 'plugin' command."""
@@ -104,6 +98,16 @@ def run_generate_docs(args):
 
 def main():
     """Main entry point for the unified CLI."""
+    # Load global config to get log level
+    global_config_path = project_root / "config" / "global.yaml"
+    global_config = load_yaml(global_config_path)
+    log_level_str = global_config.get("log_level", "INFO").upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+    
+    # Get log file path from config if specified
+    log_file = global_config.get("log_file")
+
+    initialize_logging()
     parser = argparse.ArgumentParser(description="Data Replay Framework CLI")
     subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
 

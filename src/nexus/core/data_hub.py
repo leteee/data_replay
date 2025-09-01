@@ -42,7 +42,23 @@ class DataHub:
                         "handler": source_info.get("handler") # Can be None
                     }
         
-        logger.info(f"DataHub initialized for case {case_path.name} with {len(self._registry)} registered sources.")
+                logger.info(f"DataHub initialized for case {case_path.name} with {len(self._data_sources)} registered sources.")
+
+    def add_data_sources(self, new_sources: dict):
+        """Merges new data source definitions into the DataHub's registry."""
+        for name, source_info in new_sources.items():
+            # Only add the source if it's not already registered.
+            # This respects the priority of case/global configs over plugin defaults.
+            if name not in self._registry and "path" in source_info:
+                path = Path(source_info["path"])
+                if not path.is_absolute():
+                    path = self._case_path / path
+                
+                self._registry[name] = {
+                    "path": path,
+                    "handler": source_info.get("handler")
+                }
+                logger.debug(f"Added default data source from plugin: '{name}' -> {path}")
 
     def register(self, name: str, data: Any):
         """
