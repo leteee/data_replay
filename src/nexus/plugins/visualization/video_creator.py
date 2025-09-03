@@ -1,84 +1,83 @@
+
 import cv2
 import os
 from pathlib import Path
-from ..base_plugin import BasePlugin
-from ...core.data_hub import DataHub
+from logging import Logger
 
-class VideoCreator(BasePlugin):
+from pydantic import BaseModel, Field
+
+from nexus.core.plugin_decorator import plugin
+
+
+class VideoCreatorConfig(BaseModel):
+    """Configuration model for the Video Creator plugin."""
+    input_dir: str = Field(
+        default="intermediate/rendered_frames",
+        description="Directory containing the input image frames, relative to the case path."
+    )
+    output_file: str = Field(
+        default="output/replay_video.mp4",
+        description="Path for the output video file, relative to the case path."
+    )
+    fps: int = Field(
+        default=10,
+        description="Frames per second for the output video."
+    )
+
+
+@plugin(
+    name="Video Creator",
+    output_key=None  # This plugin writes a file to disk
+)
+def create_video(
+    # Dependencies from Plugin Config
+    config: VideoCreatorConfig,
+    # Dependencies from Context
+    logger: Logger,
+    case_path: Path
+) -> None:
     """
-    A plugin that creates a video from a sequence of images.
+    Creates a video from a sequence of image frames.
     """
+    input_dir_path = case_path / config.input_dir
+    output_video_path = case_path / config.output_file
 
-    def run(self, data_hub: DataHub):
-        super().run(data_hub)
+    if not input_dir_path.exists() or not input_dir_path.is_dir():
+        logger.error(f"Input directory does not exist: {input_dir_path}")
+        return
 
-        # Get inputs and outputs from config
-        input_names = self.config.get('inputs', [])
-        output_names = self.config.get('outputs', [])
-        fps = self.config.get('fps', 10)
+    image_files = sorted(
+        [f for f in input_dir_path.glob('*.png')],
+        # Sort by frame number, assuming format like 'frame_0001.png'
+        key=lambda f: int(f.stem.split('_')[-1]) if f.stem.split('_')[-1].isdigit() else -1
+    )
 
-        # Get input directory from data source
-        if not input_names:
-            self.logger.error("Input data source must be provided in the config.")
-            return
-            
-        input_data_name = input_names[0]
-        try:
-            # For directory handler, get returns the directory path
-            input_dir_path = data_hub.get(input_data_name)
-            if not input_dir_path:
-                self.logger.warning(f"Input directory not found for data source: {input_data_name}")
-                return
-                
-            # Check if directory exists
-            if not input_dir_path.exists():
-                self.logger.warning(f"Input directory does not exist: {input_dir_path}")
-                return
-                
-            # Get list of PNG files in the directory
-            image_files = sorted([f for f in input_dir_path.glob('*.png')], key=lambda f: int(f.stem.split('_')[-1]))
-            if not image_files:
-                self.logger.warning(f"No PNG images found in {input_dir_path}, skipping video creation.")
-                return
-                
-            self.logger.info(f"Found {len(image_files)} images from data source: {input_data_name}")
-        except Exception as e:
-            self.logger.error(f"Could not load input directory from data source '{input_data_name}': {e}")
-            return
+    if not image_files:
+        logger.warning(f"No PNG images found in {input_dir_path}, skipping video creation.")
+        return
 
-        # Get output path from data source
-        if not output_names:
-            self.logger.error("Output data source must be provided in the config.")
-            return
-            
-        output_data_name = output_names[0]
-        output_video_path = data_hub.get_path(output_data_name)
-        if not output_video_path:
-            self.logger.error(f"Could not get output path for data source: {output_data_name}")
-            return
+    logger.info(f"Found {len(image_files)} images in {input_dir_path}.")
 
-        # Clean up existing video file
-        if output_video_path.exists():
-            self.logger.info(f"Cleaning up existing video file: {output_video_path}")
-            output_video_path.unlink()
+    # Clean up existing video file
+    if output_video_path.exists():
+        logger.info(f"Cleaning up existing video file: {output_video_path}")
+        output_video_path.unlink()
+    output_video_path.parent.mkdir(parents=True, exist_ok=True)
 
-        output_video_path.parent.mkdir(parents=True, exist_ok=True)
+    # Process first image to get dimensions
+    first_image_path = str(image_files[0])
+    frame = cv2.imread(first_image_path)
+    if frame is None:
+        logger.error(f"Could not read the first image: {first_image_path}")
+        return
+    height, width, _ = frame.shape
 
-        # Process first image to get dimensions
-        first_image_file = image_files[0]
-        frame = cv2.imread(str(first_image_file))
-        if frame is None:
-            self.logger.error(f"Could not read the first image: {first_image_file}")
-            return
-            
-        height, width, layers = frame.shape
+    # Create video
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video = cv2.VideoWriter(str(output_video_path), fourcc, config.fps, (width, height))
 
-        # Create video
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
-        video = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
+    for image_file in image_files:
+        video.write(cv2.imread(str(image_file)))
 
-        for image_file in image_files:
-            video.write(cv2.imread(str(image_file)))
-
-        video.release()
-        self.logger.info(f"Successfully created video: {output_video_path}")
+    video.release()
+    logger.info(f"Successfully created video: {output_video_path}")

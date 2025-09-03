@@ -10,8 +10,10 @@ project_root = Path(__file__).parent.resolve()
 sys.path.insert(0, str(project_root / "src"))
 
 from nexus.core.pipeline_runner import PipelineRunner
-from nexus.core.config_manager import ConfigManager, load_yaml
-from nexus.core.plugin_helper import run_single_plugin_by_name
+from nexus.core.data_hub import DataHub
+from nexus.core.execution_context import NexusContext
+from nexus.core.config_manager import ConfigManager, deep_merge, load_yaml
+from nexus.core.plugin_helper import run_single_plugin_by_name # <-- Uncommented import
 from nexus.scripts.generation import generate_data, generate_plugin_documentation
 from nexus.core.logger import get_logger, initialize_logging
 
@@ -19,38 +21,18 @@ logger = logging.getLogger(__name__)
 
 def run_pipeline(args):
     """Handles the 'pipeline' command."""
-    cli_overrides = {}  # TODO: Parse CLI args for config overrides
-
-    # Initialize ConfigManager to resolve cases_root
-    config_manager = ConfigManager(project_root=str(project_root), cli_args=cli_overrides)
-    cases_root = config_manager.get_cases_root_path()
+    # 1. Resolve paths
     case_arg_path = Path(args.case)
     if case_arg_path.is_absolute():
         case_path = case_arg_path
     else:
+        # ConfigManager is used here just to get the cases_root path
+        temp_config_manager = ConfigManager(project_root=str(project_root), cli_args={})
+        cases_root = temp_config_manager.get_cases_root_path()
         case_path = cases_root / case_arg_path
 
     logger.debug(f"Project Root: {project_root}")
-    logger.debug(f"Cases Root: {cases_root}")
     logger.debug(f"Resolved Case Path: {case_path}")
-
-    # Handle template copying if provided
-    if args.template:
-        template_name = args.template
-        template_filename = f"{template_name}_case.yaml"
-        template_path = project_root / "templates" / template_filename
-        
-        destination_path = case_path / "case.yaml"
-
-        if not template_path.exists():
-            logger.error(f"Template file not found: {template_path}")
-            return
-
-        # Ensure the case directory exists before copying
-        case_path.mkdir(parents=True, exist_ok=True)
-
-        logger.info(f"Copying template '{template_name}' to '{destination_path}'")
-        shutil.copy(template_path, destination_path)
 
     if not case_path.is_dir():
         logger.error(f"Case path not found or is not a directory: {case_path}")
@@ -58,25 +40,40 @@ def run_pipeline(args):
 
     logger.info(f"====== Running Case: {case_path.name} ======")
 
+    # 2. Initialize Core Services
+    # Note: The logger is already initialized in main()
+    # ConfigManager is now initialized within PipelineRunner
+    case_config = load_yaml(case_path / "case.yaml")
+    global_config = load_yaml(project_root / "config" / "global.yaml")
+    run_config = deep_merge(global_config, case_config)
+
+    data_hub = DataHub(case_path=case_path, data_sources=run_config.get("data_sources", {}), logger=logger)
+
+    # 3. Create Global NexusContext
+    nexus_context = NexusContext(
+        project_root=project_root,
+        cases_root=case_path.parent, # Assuming cases_root is parent of case_path
+        case_path=case_path,
+        data_hub=data_hub,
+        logger=logger,
+        run_config=run_config
+    )
+
+    # 4. Initialize and Run the Pipeline
     try:
-        # We pass the already resolved, absolute path to the runner
-        runner = PipelineRunner(
-            project_root=str(project_root),
-            case_path=str(case_path), 
-            cli_args=cli_overrides
-        )
-        final_data_hub = runner.run()
+        runner = PipelineRunner(nexus_context)
+        runner.run()
 
         logger.debug("\n====== Final DataHub State ======")
-        logger.debug(json.dumps(final_data_hub.summary(), indent=2))
+        logger.debug(json.dumps(data_hub.summary(), indent=2))
         logger.debug("=====================================")
 
     except Exception as e:
-        logger.error(f"An error occurred during pipeline execution: {e}", exc_info=True)
+        logger.critical(f"A critical error occurred during pipeline execution: {e}", exc_info=True)
 
 def run_plugin(args):
     """Handles the 'plugin' command."""
-    run_single_plugin_by_name(plugin_name=args.plugin_name, case_name=args.case)
+    run_single_plugin_by_name(plugin_name=args.plugin_name, case_name=args.case) # <-- This should now work
 
 def run_generate_data(args):
     """Handles the 'generate-data' command."""

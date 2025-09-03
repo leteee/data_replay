@@ -15,10 +15,10 @@ DEMO_CASE = "demo"
 
 # List of plugins from cases/demo/case.yaml
 PLUGINS = [
-    "InitialDataReader",
-    "LatencyCompensator",
-    "FrameRenderer",
-    "VideoCreator"
+    "Initial Data Reader",
+    "Latency Compensator",
+    "Frame Renderer",
+    "Video Creator"
 ]
 
 def run_command(command_args, description):

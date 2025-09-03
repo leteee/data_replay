@@ -5,6 +5,7 @@ This module defines the DataHub, the central component for data management.
 import logging
 from pathlib import Path
 from typing import Any, Dict
+from logging import Logger
 
 from .handlers import handler_registry
 
@@ -18,7 +19,7 @@ class DataHub:
     - Uses a handler system for loading and saving different file formats.
     """
 
-    def __init__(self, case_path: Path, data_sources: Dict[str, Any] = None):
+    def __init__(self, case_path: Path, data_sources: Dict[str, Any] = None, logger: Logger = None):
         """
         Initializes the DataHub.
         Args:
@@ -28,6 +29,7 @@ class DataHub:
         self._case_path = case_path
         self._data: Dict[str, Any] = {}  # In-memory cache: {name: data}
         self._registry: Dict[str, Dict[str, Any]] = {}  # Maps data name to its info {path, handler}
+        self.logger = logger if logger else logging.getLogger(__name__)
 
         if data_sources:
             for name, source_info in data_sources.items():
@@ -42,14 +44,13 @@ class DataHub:
                         "handler": source_info.get("handler") # Can be None
                     }
         
-                logger.info(f"DataHub initialized for case {case_path.name} with {len(self._data_sources)} registered sources.")
+                logger.info(f"DataHub initialized for case {case_path.name} with {len(self._registry)} registered sources.")
 
     def add_data_sources(self, new_sources: dict):
         """Merges new data source definitions into the DataHub's registry."""
         for name, source_info in new_sources.items():
-            # Only add the source if it's not already registered.
-            # This respects the priority of case/global configs over plugin defaults.
-            if name not in self._registry and "path" in source_info:
+            # Always add/update the source. The priority is handled by the order of calls.
+            if "path" in source_info:
                 path = Path(source_info["path"])
                 if not path.is_absolute():
                     path = self._case_path / path
@@ -58,7 +59,7 @@ class DataHub:
                     "path": path,
                     "handler": source_info.get("handler")
                 }
-                logger.debug(f"Added default data source from plugin: '{name}' -> {path}")
+                self.logger.debug(f"Added/Updated data source: '{name}' -> {path}")
 
     def register(self, name: str, data: Any):
         """
