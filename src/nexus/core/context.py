@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
-from .data_hub import DataHub
+from .data.hub import DataHub
 
 @dataclass(frozen=True)
 class NexusContext:

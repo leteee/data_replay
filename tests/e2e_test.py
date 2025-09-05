@@ -15,7 +15,6 @@ DEMO_CASE = "demo"
 
 # List of plugins from cases/demo/case.yaml
 PLUGINS = [
-    "Initial Data Reader",
     "Latency Compensator",
     "Frame Renderer",
     "Video Creator"
@@ -63,9 +62,9 @@ def main():
             logger.error(f"Test failed at running individual plugin: {plugin_name}.")
             sys.exit(1)
 
-    # 4. Generate Plugin Documentation
-    if not run_command(["generate-docs"], "Generating Plugin Documentation"):
-        logger.error("Test failed at Plugin Documentation Generation step.")
+    # 4. Generate Framework Documentation
+    if not run_command(["docs"], "Generating Framework Documentation"):
+        logger.error("Test failed at Framework Documentation Generation step.")
         sys.exit(1)
 
     logger.info("End-to-End Test Suite COMPLETED SUCCESSFULLY!")

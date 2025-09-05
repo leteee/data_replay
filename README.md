@@ -1,138 +1,141 @@
-# Nexus
+# Data Replay & Processing Framework
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/your-repo/nexus)
 
-**Nexus** is an industrial-grade Python framework for building robust, extensible, and maintainable data processing pipelines.
-
-## Core Philosophy
-
-This framework is designed from the ground up to support complex, multi-stage data processing tasks where traceability, configurability, and modularity are critical. It enforces a clean separation between the core orchestration logic, the individual processing steps (plugins), and the data itself.
+A flexible, configuration-driven Python framework for building robust, extensible, and maintainable data processing pipelines. It is designed from the ground up with a focus on dependency injection, automatic discovery, and a declarative workflow.
 
 ## Key Features
 
-- **Unified CLI**: A single, consistent entry point (`run.py`) for all project operations.
-- **Modular & Pluggable**: Encapsulate processing logic into standalone plugins. Easily extend the framework by adding new plugins without altering the core engine.
-- **Case Templating**: Quickly scaffold new cases using predefined templates.
-- **Centralized Data Management**: A powerful `DataHub` manages the lifecycle of all data, providing in-memory caching, lazy loading, and automatic persistence.
-- **Hierarchical Configuration**: A multi-layered configuration system for flexible and reusable pipeline definitions.
-- **Modern Python Structure**: Uses the standard `src` layout for a clean and maintainable codebase.
+- **Declarative Pipelines**: Define complex, multi-stage workflows in simple and readable `YAML` files.
+- **Functional & Pluggable**: Write plugins as simple, decorated Python functions (`@plugin`). No boilerplate classes needed.
+- **Automatic Dependency Injection**: Framework services (`DataHub`, `Logger`), data objects, paths, and configuration parameters are automatically injected into your plugin functions based on type hints and parameter names.
+- **Centralized Data Management**: A powerful `DataHub` manages the lifecycle of all data, providing lazy loading and automatic I/O handling.
+- **Extensible I/O Handlers**: Add support for new data formats by creating simple, decorated `DataHandler` classes (`@handler`).
+- **Hierarchical Configuration**: A multi-layered configuration system (Plugin Default < Global < Case) provides maximum flexibility and reusability.
+- **Automatic Discovery**: Plugins and Handlers are discovered automatically by the framework. No manual registration required.
+- **Auto-Generated Documentation**: A command-line tool to generate a complete reference for all plugins and handlers.
 
 ## Project Structure
 
 ```
 .
-├── cases/
-├── config/
-├── logs/
-├── templates/
+├── cases/                # Contains different data processing cases (e.g., demo).
+├── config/               # Global framework configuration.
+├── logs/                 # Directory for log files.
 ├── src/
-│   └── nexus/
-│       ├── __init__.py
-│       ├── core/
-│       ├── modules/
-│       └── scripts/
+│   └── demo/             # Source code for the demo plugins.
+│   └── nexus/            # Core framework source code.
+├── templates/            # Templates for generating new cases.
 ├── tests/
 ├── .gitignore
-├── pyproject.toml
+├── REFERENCE.md          # Auto-generated reference for all plugins and handlers.
 ├── README.md
-└── run.py
+└── run.py                # Unified command-line interface (CLI) for the framework.
 ```
+
+## Getting Started
+
+### Prerequisites
+- Python 3.10+
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone <your-repo-url>
+   cd <repository-name>
+   ```
+
+2. Install the required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Usage: The Unified CLI
 
 All interactions with the framework are handled through the central `run.py` script.
+
+### 1. Generate Demo Data
+
+First, generate the sample data required to run the demo case.
+
 ```bash
-python run.py --help
+python run.py generate-data
 ```
 
-### Creating a New Case from a Template
+### 2. Run a Pipeline
 
-To create a new case, use the `--template` argument. For example, to create `my_new_case` using the `demo` template, run:
+Execute the entire pipeline for a given case. If the case does not exist, you can create it from a template.
 
 ```bash
+# Run the demo pipeline (will create cases/demo/case.yaml if it doesn't exist)
+python run.py pipeline --case demo
+
+# Create a new case 'my_new_case' from the 'demo' template and run its pipeline
 python run.py pipeline --case my_new_case --template demo
 ```
 
-This command will:
-1. Create the `cases/my_new_case/` directory.
-2. Copy `templates/demo_case.yaml` to `cases/my_new_case/case.yaml`.
-3. Execute the pipeline for the new case.
+### 3. Run a Single Plugin
 
-### Running an Existing Pipeline
+Execute a specific plugin from a case definition. This is useful for debugging or testing individual components. The framework will set up the full context required to run just that plugin.
 
-Once a case exists, you can run it without the `--template` argument:
 ```bash
-python run.py pipeline --case my_new_case
+# Example: Run only the "Frame Renderer" plugin for the demo case
+python run.py plugin "Frame Renderer" --case demo
 ```
 
-### Utility Commands
+### 4. Generate Documentation
 
-- **Generate Demo Data**: Cleans and regenerates all raw data for the demo case.
-  ```bash
-  python run.py generate-data
-  ```
+Scan all registered plugins and handlers and update the `REFERENCE.md` file.
 
-- **Generate Plugin Docs**: Scans all plugins and updates the `PLUGINS.md` reference file.
-  ```bash
-  python run.py generate-docs
-  ```
+```bash
+python run.py docs
+```
 
-- **Run a Single Plugin**: Executes a specific plugin from a case definition. This is useful for debugging or testing individual components.
-  ```bash
-  python run.py plugin <PluginName> --case <case_name>
-  ```
-  Replace `<PluginName>` with the exact class name of the plugin.
-  Replace `<case_name>` with the name of the case directory (e.g., `demo`).
+## Core Concepts
 
-  **Examples using the `demo` case:**
-  ```bash
-  # Run the InitialDataReader plugin for the demo case
-  python run.py plugin InitialDataReader --case demo
+### `case.yaml`
 
-  # Run the LatencyCompensator plugin for the demo case
-  python run.py plugin LatencyCompensator --case demo
+This file is the heart of a pipeline run. It defines two key sections:
 
-  # Run the FrameRenderer plugin for the demo case
-  python run.py plugin FrameRenderer --case demo
+- **`data_sources`**: A catalog of all data "nouns" in the pipeline. It maps a logical name (e.g., `predicted_states`) to a physical path and an optional handler, allowing the framework to manage I/O.
+- **`pipeline`**: A list of the plugins (the "verbs") to execute in sequence. You can enable/disable plugins and override their default parameters here.
 
-  # Run the VideoCreator plugin for the demo case
-  python run.py plugin VideoCreator --case demo
-  ```
+*Example snippet from `cases/demo/case.yaml`:*
+```yaml
+pipeline:
+  # The first plugin in the demo compensates for latency.
+  - plugin: "Latency Compensator"
+    config:
+      latency_to_compensate_s: 0.2
 
-## How It Works
+  # The next plugin renders the results into image frames.
+  - plugin: "Frame Renderer"
+    config:
+      zoom_factor: 5
+```
 
-### 1. The `case.yaml`
+### Plugins (`@plugin`)
 
-This file is the heart of a pipeline run, created from a template or manually. It defines:
-- **`data_sources`**: A catalog of all data "nouns" in the pipeline.
-- **`pipeline`**: A list of the plugins (the "verbs") to execute in sequence.
+A plugin is a simple Python function decorated with `@plugin`. It defines the logic for a single processing step. Its parameters are automatically supplied by the dependency injection system.
 
-### 2. The DataHub
+*Example Plugin Signature:*
+```python
+from nexus.core.plugin.decorator import plugin
+from logging import Logger
+import pandas as pd
 
-The `DataHub` is a central object passed through the pipeline that manages all data.
+@plugin(name="My Awesome Plugin", output_key="processed_data")
+def my_plugin(
+    raw_data: pd.DataFrame,  # Injected from DataHub by name
+    logger: Logger,          # Core service injected by type
+    some_parameter: int      # Injected from config
+) -> pd.DataFrame:
+    # ... your logic here ...
+    logger.info(f"Processing with some_parameter = {some_parameter}")
+    return raw_data.copy() # The return value is stored in DataHub
+```
 
-### 3. Plugins
+### Handlers (`@handler`)
 
-A plugin is a Python class that inherits from `BasePlugin` and implements the `run` method. New plugins should be added to `src/nexus/plugins/`.
-
-## Framework in Practice: The Demo Case
-
-Let's trace the execution for `python run.py pipeline --case demo --template demo`.
-
-1.  **Initiation**: The `main` function in `run.py` parses the command.
-
-2.  **Templating**: The script sees the `--template demo` argument and copies `templates/demo_case.yaml` to `cases/demo/case.yaml`.
-
-3.  **Configuration Loading**: The `PipelineRunner` initializes the `ConfigManager`, which loads and merges `global.yaml` and the newly created `cases/demo/case.yaml`.
-
-4.  **DataHub Creation**: The `PipelineRunner` initializes the `DataHub` with the data sources defined in the case file.
-
-5.  **Pipeline Execution**: The `PipelineRunner` iterates through the plugins defined in the `pipeline` section, executing each one in sequence.
-
-6.  **Completion**: After the pipeline finishes, `run.py` prints a summary of the `DataHub`'s final state.
-
-## Future Development
-
-- **Configuration Overrides**: Implement command-line overrides for case configuration values.
-- **Data Quality Plugins**: Add a standard set of plugins for data validation and quality analysis.
-- **Enhanced Plugin Discovery**: Improve the plugin loading mechanism to be more dynamic.
+A Handler is a class decorated with `@handler` that teaches the `DataHub` how to read and write a specific data format (e.g., `.csv`, `.parquet`, `.json`). The framework automatically discovers them, making it easy to add support for new file types.

@@ -6,7 +6,7 @@ from logging import Logger
 
 from pydantic import BaseModel, Field
 
-from nexus.core.plugin_decorator import plugin
+from nexus.core.plugin.decorator import plugin
 
 
 class VideoCreatorConfig(BaseModel):
@@ -30,6 +30,8 @@ class VideoCreatorConfig(BaseModel):
     output_key=None  # This plugin writes a file to disk
 )
 def create_video(
+    # Dependencies from DataHub
+    input_frames: Path, # <-- Injected by DataHub using DirectoryHandler
     # Dependencies from Plugin Config
     config: VideoCreatorConfig,
     # Dependencies from Context
@@ -39,7 +41,8 @@ def create_video(
     """
     Creates a video from a sequence of image frames.
     """
-    input_dir_path = case_path / config.input_dir
+    # input_dir_path = case_path / config.input_dir # <-- Old way: use config
+    input_dir_path = input_frames  # <-- New way: use Path injected by DataHub
     output_video_path = case_path / config.output_file
 
     if not input_dir_path.exists() or not input_dir_path.is_dir():

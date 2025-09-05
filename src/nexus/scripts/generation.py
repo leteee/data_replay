@@ -125,107 +125,158 @@ def generate_data():
     latent_measurements_df.to_csv(LATENT_CSV_PATH, index=False, float_format='%.3f')
     print(f"Generated latent measurements: {LATENT_CSV_PATH}")
     print("--- Demo data generation complete! ---")
-
-
-# --- Docs Generation ---
-
-def get_plugin_info(plugin_py_file: Path, project_root: Path):
-    """
-    Extracts information about a plugin from its source file and YAML config.
-    """
-    module_path = str(plugin_py_file.relative_to(project_root)).replace('\\', '.').replace('/', '.')[:-3]
     
-    with open(plugin_py_file, 'r', encoding='utf-8') as f:
-        source = f.read()
-        tree = ast.parse(source)
+    # Copy the template case.yaml file to the demo case directory
+    project_root = Path(__file__).parent.parent.parent.parent
+    template_path = project_root / "templates" / "demo_case.yaml"
+    case_yaml_path = Path(CASE_DIR) / "case.yaml"
+    
+    if template_path.exists():
+        import shutil
+        shutil.copy(template_path, case_yaml_path)
+        print(f"Copied template to: {case_yaml_path}")
+    else:
+        print(f"Template file not found: {template_path}")
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            is_plugin = False
-            for base in node.bases:
-                if isinstance(base, ast.Name) and base.id == 'BasePlugin':
-                    is_plugin = True
-                    break
-            
-            if is_plugin:
-                class_name = node.name
-                docstring = ast.get_docstring(node) or "No description provided."
-                
-                yaml_path = plugin_py_file.with_suffix('.yaml')
-                params = []
-                if yaml_path.exists():
-                    with open(yaml_path, 'r', encoding='utf-8') as yf:
-                        config_data = yaml.safe_load(yf)
-                        yf.seek(0)
-                        lines = yf.readlines()
-                        param_comments = {}
-                        for i, line in enumerate(lines):
-                            if '#' in line and i > 0:
-                                key_line = lines[i-1]
-                                key = key_line.split(':')[0].strip()
-                                comment = line.split('#', 1)[1].strip()
-                                if key:
-                                    param_comments[key] = comment
 
-                        if config_data:
-                            for key, value in config_data.items():
-                                params.append({
-                                    "name": key,
-                                    "default": value,
-                                    "description": param_comments.get(key, "No description.")
-                                })
+# --- Docs Generation (Refactored) ---
 
-                return {
-                    "name": class_name,
-                    "description": docstring,
-                    "parameters": params,
-                    "module_path": module_path
-                }
-    return None
+from nexus.core.plugin.decorator import PLUGIN_REGISTRY
+from nexus.core.plugin.discovery import discover_plugins
+from nexus.core.data.handlers.decorator import HANDLER_REGISTRY
+from nexus.core.data.handlers.discovery import discover_handlers
+from nexus.core.data.hub import DataHub
+from nexus.core.context import PluginContext
+from logging import Logger
+from pydantic import BaseModel
+import inspect
+import yaml
+from pathlib import Path
+
+def _get_default_config(plugin_spec) -> dict:
+    """Safely loads the default YAML config for a plugin."""
+    try:
+        plugin_module = inspect.getmodule(plugin_spec.func)
+        if plugin_module and plugin_module.__file__:
+            yaml_path = Path(plugin_module.__file__).with_suffix('.yaml')
+            if yaml_path.exists():
+                with open(yaml_path, 'r', encoding='utf-8') as f:
+                    return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+    return {}
+
+def _format_value(value):
+    """Formats default values for display in Markdown."""
+    if isinstance(value, str) and not value:
+        return '""'
+    if isinstance(value, list) and not value:
+        return '[]'
+    if isinstance(value, dict) and not value:
+        return '{}'
+    return f'`{value}`'
 
 def generate_plugin_documentation():
     """
-    Finds all plugins, extracts their info, and writes PLUGINS.md.
+    Finds all plugins and handlers, extracts their info, and writes PLUGINS.md.
+    This refactored version uses the decorator registries for discovery.
     """
-    project_root = Path(__file__).parent.parent.parent.parent
-    modules_dir = project_root / 'modules'
-    output_file = project_root / 'PLUGINS.md'
-
-    plugin_files = list(modules_dir.glob('**/*.py'))
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    output_file = project_root / 'REFERENCE.md'
     
-    all_plugins_info = []
-    for py_file in plugin_files:
-        if py_file.name in ['__init__.py', 'base_plugin.py', 'datahub.py']:
-            continue
+    # 1. Discover everything
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    global_config_path = project_root / "config" / "global.yaml"
+    with open(global_config_path, 'r', encoding='utf-8') as f:
+        global_config = yaml.safe_load(f)
+    
+    plugin_modules = global_config.get("plugin_modules", [])
+    discover_plugins(plugin_modules, logger)
+    discover_handlers(logger)
+
+    # 2. Process Plugins
+    md_content = """# Framework Reference
+
+This document provides a reference for all available Plugins and Data Handlers in the framework.
+It is auto-generated by `python run.py generate-docs`. Do not edit it manually.
+
+---
+
+"""
+    
+    md_content += "## Plugins\n\n"
+    
+    sorted_plugins = sorted(PLUGIN_REGISTRY.values(), key=lambda p: p.name)
+    
+    for spec in sorted_plugins:
+        md_content += f"### {spec.name}\n\n"
         
-        info = get_plugin_info(py_file, project_root)
-        if info:
-            all_plugins_info.append(info)
+        docstring = inspect.getdoc(spec.func)
+        md_content += f"{docstring}\n\n" if docstring else "No description provided.\n\n"
 
-    all_plugins_info.sort(key=lambda x: x['name'])
-
-    md_content = "# Plugin Reference\n\n"
-    md_content += "This document provides a reference for all available plugins in the framework.\n\n"
-    md_content += "It is auto-generated by `run.py generate-docs`. Do not edit it manually.\n\n"
-    md_content += "---\n\n"
-
-    for info in all_plugins_info:
-        md_content += f"## {info['name']}\n\n"
-        md_content += f"**Module:** `{info['module_path']}`\n\n"
-        md_content += f"{info['description']}\n\n"
+        params = inspect.signature(spec.func).parameters
+        default_config = _get_default_config(spec)
         
-        if info['parameters']:
-            md_content += "### Parameters\n\n"
-            md_content += "| Name | Default Value | Description |\n"
-            md_content += "|------|---------------|-------------|\n"
-            for param in info['parameters']:
-                md_content += f"| `{param['name']}` | `{param['default']}` | {param['description']} |\n"
+        # Injected Dependencies
+        injected_params = [p for p in params.values() if p.annotation in [DataHub, Logger, Path, PluginContext]]
+        if injected_params:
+            md_content += "**Core Dependencies Injected:**\n"
+            md_content += ", ".join([f'`{p.annotation.__name__}`' for p in injected_params])
+            md_content += "\n\n"
+
+        # Pydantic Config Model
+        pydantic_models = [p for p in params.values() if isinstance(p.annotation, type) and issubclass(p.annotation, BaseModel)]
+        if pydantic_models:
+            model = pydantic_models[0].annotation
+            md_content += "**Configuration Parameters (from Pydantic Model):**\n\n"
+            md_content += "| Name | Type | Default | Description |\n"
+            md_content += "|------|------|---------|-------------|\n"
+            for field_name, field in model.model_fields.items():
+                default_val = _format_value(field.default)
+                description = field.description or ''
+                md_content += f"| `{field_name}` | `{field.annotation.__name__}` | {default_val} | {description} |\n"
+            md_content += "\n"
         else:
-            md_content += "This plugin has no configurable parameters.\n"
-        
-        md_content += "\n---\n\n"
+            # Fallback to simple config parameters if no Pydantic model
+            config_params = [p for p in params.values() if p.annotation not in [DataHub, Logger, Path, PluginContext]]
+            if config_params:
+                md_content += "**Configuration Parameters:**\n\n"
+                md_content += "| Name | Default Value (from .yaml) |\n"
+                md_content += "|------|----------------------------|\n"
+                for p in config_params:
+                    default_val = _format_value(default_config.get(p.name, 'N/A'))
+                    md_content += f"| `{p.name}` | {default_val} |\n"
+                md_content += "\n"
 
+    # 3. Process Handlers
+    md_content += "---\n## Data Handlers\n\n"
+    md_content += "Data Handlers are responsible for reading and writing different data formats.\n\n"
+    md_content += "| Name | Supported Extensions | Description |\n"
+    md_content += "|------|----------------------|-------------|\n"
+
+    # Process registry to be one line per handler class
+    processed_handlers = {}
+    for key, handler_cls in HANDLER_REGISTRY.items():
+        if handler_cls not in processed_handlers:
+            processed_handlers[handler_cls] = {'name': 'N/A', 'extensions': []}
+        
+        if key.startswith('.'):
+            processed_handlers[handler_cls]['extensions'].append(f'`{key}`')
+        else:
+            processed_handlers[handler_cls]['name'] = f'`{key}`'
+
+    sorted_handlers = sorted(processed_handlers.items(), key=lambda item: item[1]['name'])
+
+    for handler_cls, info in sorted_handlers:
+        docstring = inspect.getdoc(handler_cls) or ""
+        description = docstring.split('\n')[0] # First line of docstring
+        extensions_str = ", ".join(sorted(info['extensions'])) or 'N/A'
+        md_content += f"| {info['name']} | {extensions_str} | {description} |\n"
+
+    # 4. Write file
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(md_content)
 
-    print(f"Successfully generated plugin documentation at {output_file}")
+    print(f"Successfully generated framework reference at {output_file}")

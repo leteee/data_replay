@@ -4,12 +4,24 @@ This module defines the DataHub, the central component for data management.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from logging import Logger
+
+from pydantic import BaseModel
 
 from .handlers import handler_registry
 
 logger = logging.getLogger(__name__)
+
+
+class DataSource(BaseModel):
+    """Represents a registered data source that can be loaded or saved."""
+    path: Path
+    handler: Optional[str] = None
+
+    class Config:
+        arbitrary_types_allowed = True
+
 
 class DataHub:
     """
@@ -28,7 +40,7 @@ class DataHub:
         """
         self._case_path = case_path
         self._data: Dict[str, Any] = {}  # In-memory cache: {name: data}
-        self._registry: Dict[str, Dict[str, Any]] = {}  # Maps data name to its info {path, handler}
+        self._registry: Dict[str, DataSource] = {}  # Maps data name to its DataSource info
         self.logger = logger if logger else logging.getLogger(__name__)
 
         if data_sources:
@@ -39,12 +51,12 @@ class DataHub:
                         # Resolve relative paths from the case directory
                         path = self._case_path / path
                     
-                    self._registry[name] = {
-                        "path": path,
-                        "handler": source_info.get("handler") # Can be None
-                    }
+                    self._registry[name] = DataSource(
+                        path=path,
+                        handler=source_info.get("handler")
+                    )
         
-                logger.info(f"DataHub initialized for case {case_path.name} with {len(self._registry)} registered sources.")
+            self.logger.info(f"DataHub initialized for case {case_path.name} with {len(self._registry)} registered sources.")
 
     def add_data_sources(self, new_sources: dict):
         """Merges new data source definitions into the DataHub's registry."""
@@ -55,10 +67,11 @@ class DataHub:
                 if not path.is_absolute():
                     path = self._case_path / path
                 
-                self._registry[name] = {
-                    "path": path,
-                    "handler": source_info.get("handler")
-                }
+                # Store a DataSource object instead of a dict
+                self._registry[name] = DataSource(
+                    path=path,
+                    handler=source_info.get("handler")
+                )
                 self.logger.debug(f"Added/Updated data source: '{name}' -> {path}")
 
     def register(self, name: str, data: Any):
@@ -73,9 +86,9 @@ class DataHub:
 
         # Auto-persist if a path is defined in the registry
         if name in self._registry:
-            source_info = self._registry[name]
-            path = source_info["path"]
-            handler_name = source_info.get("handler")
+            source = self._registry[name] # source is now a DataSource object
+            path = source.path
+            handler_name = source.handler
 
             path.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -101,19 +114,20 @@ class DataHub:
             return self._data[name]
         
         if name in self._registry:
-            source_info = self._registry[name]
-            path = source_info["path"]
-            handler_name = source_info.get("handler")
+            source = self._registry[name] # source is now a DataSource object
+            path = source.path
+            handler_name = source.handler
 
             logger.info(f"Lazy loading data '{name}' from: {path}...")
             
-            # For directories, we don't require them to exist beforehand
-            # For files, they must exist
-            if not path.exists() and not self._is_directory_handler(handler_name):
-                raise FileNotFoundError(f"File for data source '{name}' not found at: {path}")
-
             try:
                 handler = handler_registry.get_handler(path, handler_name=handler_name)
+
+                # For directories, we don't require them to exist beforehand.
+                # For files, they must exist.
+                if not path.exists() and not handler.handles_directories:
+                    raise FileNotFoundError(f"File for data source '{name}' not found at: {path}")
+
                 data = handler.load(path)
                 self._data[name] = data  # Cache in memory after loading
                 return data
@@ -123,28 +137,33 @@ class DataHub:
             
         raise KeyError(f"Data '{name}' not found in DataHub.")
 
-    def _is_directory_handler(self, handler_name: str) -> bool:
-        """
-        Check if the handler is a directory handler.
-        
-        Args:
-            handler_name: Name of the handler
-            
-        Returns:
-            True if it's a directory handler, False otherwise
-        """
-        return handler_name and ('DirectoryHandler' in handler_name or 'directory' in handler_name.lower())
-
     def get_path(self, name: str) -> Path | None:
         """
         Gets the registered file path for a data source.
+        If the data source is a directory, ensures the directory exists by calling its handler's load method.
         Args:
             name: The name of the data source.
         Returns:
             The Path object if it exists, otherwise None.
         """
         if name in self._registry:
-            return self._registry[name]["path"]
+            source = self._registry[name]
+            path = source.path
+            handler_name = source.handler
+
+            # If it's a directory handler, call its load method to ensure existence
+            try:
+                handler = handler_registry.get_handler(path, handler_name=handler_name)
+                if handler.handles_directories:
+                    self.logger.debug(f"Ensuring directory exists for '{name}' at {path} via handler.load().")
+                    handler.load(path) # This will create the directory if it doesn't exist
+            except Exception as e:
+                self.logger.error(f"Error ensuring directory existence for '{name}' at {path}: {e}")
+                # Decide whether to re-raise or just log. For now, just log and proceed.
+                # The plugin will likely fail later if the directory isn't there.
+                pass # Allow the path to be returned even if directory creation failed.
+
+            return path
         return None
 
     def __contains__(self, name: str) -> bool:
@@ -159,8 +178,8 @@ class DataHub:
             "in_memory_data": list(self._data.keys()),
             "registered_files": {
                 name: {
-                    "path": str(info["path"]),
-                    "handler": info.get("handler", "default (by extension)")
-                } for name, info in self._registry.items()
+                    "path": str(source.path),
+                    "handler": source.handler or "default (by extension)"
+                } for name, source in self._registry.items()
             }
         }

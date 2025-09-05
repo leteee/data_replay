@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from .base import DataHandler
+from .decorator import handler
 
+@handler(name="csv", extensions=[".csv"])
 class CsvHandler(DataHandler):
     """Handles reading and writing CSV files."""
-    file_extension = ".csv"
     def load(self, path: Path) -> pd.DataFrame:
         return pd.read_csv(path)
 

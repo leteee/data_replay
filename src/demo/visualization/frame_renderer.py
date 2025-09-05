@@ -8,15 +8,15 @@ from logging import Logger
 
 from pydantic import BaseModel, Field
 
-from nexus.core.data_hub import DataHub
-from nexus.core.plugin_decorator import plugin
+from nexus.core.data.hub import DataHub
+from nexus.core.plugin.decorator import plugin
 
 
 class FrameRendererConfig(BaseModel):
     """Configuration model for the Frame Renderer plugin."""
     video_manifest_key: str = "video_manifest"
     predicted_states_key: str = "predicted_states"
-    output_dir: str = "intermediate/rendered_frames"
+    rendered_frames_dir_key: str = "rendered_frames_dir"
     zoom_factor: float = 5.0
     circle_radius_px: int = 15
     circle_width_px: int = 3
@@ -30,6 +30,7 @@ def render_frames(
     # Dependencies from DataHub
     video_manifest: pd.DataFrame,
     predicted_states: pd.DataFrame,
+    rendered_frames_dir: Path, # <-- Injected by DataHub using DirectoryHandler
     # Dependencies from Plugin Config
     config: FrameRendererConfig,
     # Dependencies from Context
@@ -41,11 +42,11 @@ def render_frames(
     creating a visual representation of the EKF predictions.
     """
     # --- Prepare Output Directory ---
-    output_dir_path = case_path / config.output_dir
-    if output_dir_path.exists():
-        shutil.rmtree(output_dir_path)
-    output_dir_path.mkdir(parents=True)
-    logger.info(f"Created output directory: {output_dir_path}")
+    # The directory is now prepared by the DataHub and DirectoryHandler
+    # We just use the Path provided by the dependency injection
+    
+    logger.info(f"Using output directory prepared by DataHub: {rendered_frames_dir}")
+    logger.info(f"Absolute path of rendered_frames_dir: {rendered_frames_dir.absolute()}")
 
     # --- Merge Data ---
     manifest_df = video_manifest.copy()
@@ -93,7 +94,10 @@ def render_frames(
 
         # --- Save Frame ---
         # Assuming image_path in manifest is relative to case_path
-        output_frame_path = output_dir_path / Path(row['image_path']).name
+        image_filename = Path(row['image_path']).name
+        output_frame_path = rendered_frames_dir / image_filename
+        
+        logger.info(f"Saving frame to: {output_frame_path}")
         img.save(output_frame_path)
 
-    logger.info(f"Finished rendering frames to {output_dir_path}")
+    logger.info(f"Finished rendering frames to {rendered_frames_dir}")

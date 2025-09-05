@@ -1,6 +1,6 @@
 
 from typing import Callable, Any
-from .plugin_spec import PluginSpec
+from .spec import PluginSpec
 
 # This will act as a central registry for all discovered plugins
 PLUGIN_REGISTRY: dict[str, PluginSpec] = {}

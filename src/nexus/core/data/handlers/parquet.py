@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from .base import DataHandler
+from .decorator import handler
 
+@handler(name="parquet", extensions=[".parquet"])
 class ParquetHandler(DataHandler):
     """Handles reading and writing Parquet files."""
     file_extension = ".parquet"

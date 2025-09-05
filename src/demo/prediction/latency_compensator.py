@@ -6,8 +6,8 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-from nexus.core.data_hub import DataHub
-from nexus.core.plugin_decorator import plugin
+from nexus.core.data.hub import DataHub
+from nexus.core.plugin.decorator import plugin
 
 
 class LatencyCompensatorConfig(BaseModel):

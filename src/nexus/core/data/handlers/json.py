@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from .base import DataHandler
+from .decorator import handler
 
+@handler(name="json", extensions=[".json"])
 class JsonHandler(DataHandler):
     """Handles reading and writing JSON files."""
     file_extension = ".json"

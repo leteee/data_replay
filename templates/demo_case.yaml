@@ -19,7 +19,7 @@ description: "A demo case for replaying latent vehicle data with prediction and 
 #     handler: nexus.core.handlers.file.FileHandler
 #   rendered_frames_dir:
 #     path: "intermediate/rendered_frames"
-#     handler: DirectoryHandler
+#     handler: dir
 #   replay_video:
 #     path: "output/replay_video.mp4"
 #     handler: FileHandler
@@ -32,18 +32,12 @@ description: "A demo case for replaying latent vehicle data with prediction and 
 # .yaml file (e.g., latency_compensator.yaml).
 # ==============================================================================
 pipeline:
-  # ----------------------------------------------------------------------------
-  # Plugin 1: InitialDataReader
-  # ----------------------------------------------------------------------------
-  - plugin: nexus.plugins.initial_data_reader.InitialDataReader
-    # enable: true
-    config:
-      # outputs: ["video_manifest", "latent_measurements"]
+  
 
   # ----------------------------------------------------------------------------
   # Plugin 2: LatencyCompensator
   # ----------------------------------------------------------------------------
-  - plugin: LatencyCompensator
+  - plugin: "Latency Compensator"
     # enable: true
     config:
       # inputs: ["latent_measurements"]
@@ -53,17 +47,17 @@ pipeline:
   # ----------------------------------------------------------------------------
   # Plugin 3: FrameRenderer
   # ----------------------------------------------------------------------------
-  - plugin: FrameRenderer
+  - plugin: "Frame Renderer"
     # enable: true
     config:
       # inputs: ["video_manifest", "predicted_states"]
-      output_dir: "intermediate/rendered_frames"
+      # output_dir: "intermediate/rendered_frames"
       zoom_factor: 5
 
   # ----------------------------------------------------------------------------
   # Plugin 4: VideoCreator
   # ----------------------------------------------------------------------------
-  - plugin: VideoCreator
+  - plugin: "Video Creator"
     # enable: true
     config:
       # inputs: ["rendered_frames_dir"]

@@ -7,20 +7,21 @@ from typing import Any
 import logging
 
 from .base import DataHandler
+from .decorator import handler
 
 logger = logging.getLogger(__name__)
 
+@handler(name="dir", extensions=[])
 class DirectoryHandler(DataHandler):
     """
     Handler for directory-based data sources.
     Simply returns the absolute path to the directory.
     """
-    
-    file_extension = ".dir"  # Directory handler uses .dir extension
+    handles_directories = True
     
     def load(self, path: Path) -> Path:
         """
-        Return the absolute path to the directory.
+        Ensure the directory exists and return its absolute path.
         
         Args:
             path: Path to the directory
@@ -28,13 +29,10 @@ class DirectoryHandler(DataHandler):
         Returns:
             Absolute Path object to the directory
         """
-        if not path.exists():
-            raise FileNotFoundError(f"Directory not found: {path}")
-        
-        if not path.is_dir():
-            raise ValueError(f"Path is not a directory: {path}")
-        
-        logger.info(f"Returning directory path: {path}")
+        # For a directory data source, 'loading' means ensuring it exists.
+        # This is typically used for output directories.
+        path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ensured directory exists (load): {path}")
         return path.absolute()
     
     def save(self, data: Any, path: Path) -> None:
@@ -47,4 +45,4 @@ class DirectoryHandler(DataHandler):
         """
         # For directory handler, we just ensure the directory exists
         path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Ensured directory exists: {path}")
+        logger.info(f"Ensured directory exists (save): {path}")

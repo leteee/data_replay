@@ -12,6 +12,7 @@ class DataHandler(abc.ABC):
     Defines the interface for loading and saving data.
     """
     file_extension: str | None = None
+    handles_directories: bool = False
 
     @abc.abstractmethod
     def load(self, path: Path) -> Any:

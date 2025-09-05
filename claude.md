@@ -1,149 +1,47 @@
-# 项目核心准则
-1.  **一切皆遵循最佳实践 (Best Practices as Foundation)**: 这是项目的基石准则。从顶层架构设计到底层代码实现的每一个细节，从开发工作流到依赖管理，所有方面都**必须**严格对齐业界公认的、当前主流的最佳实践，不存在任何妥协。
-2.  **高度模块化与灵活性 (High Modularity & Flexibility)**: 框架的核心是可插拔、松耦合的插件化架构。所有组件都应独立解耦，确保系统拥有强大的灵活性和可扩展性。
-3.  **分层可覆盖的配置体系 (Layered, Overridable Configuration)**: 框架采用统一的、分优先级的配置管理。除日志系统外，所有配置的加载优先级顺序为：**命令行参数 > Case 配置 > 全局配置 > 插件默认配置**。高优先级配置会覆盖低优先级配置，确保运行时的精确控制。
+# 0. Guiding Principles
+- **Language Protocol**: The AI assistant will use all languages for internal processing, provide responses in Chinese, and all file outputs must be in English.
+- **Built on Best Practices**: From the high-level architecture to the low-level implementation, the project strictly follows industry-recognized mainstream best practices.
+- **High Modularity & Flexibility**: The core of the framework is a pluggable, loosely coupled plugin architecture, pursuing ultimate flexibility and scalability.
 
----
 
-# 二级准则：设计哲学与权衡
+# 2. Key Architectural Mechanisms
 
-除了上述的“核心准则”外，项目还包含一些重要的设计哲学，它们是在权衡了不同方案的利弊后做出的战略选择。
+This section delves into the internal workings of the framework's key components.
 
-### 1. 隐式I/O契约 (Implicit I/O Contract)
+### I. Execution Core
+- **`PipelineRunner`**: As the core engine, it orchestrates the entire run. It discovers plugins and handlers, prepares the configuration by instantiating the `ConfigManager`, sets up the `DataHub`, and then executes each plugin in the sequence defined by `case.yaml`.
+- **`PluginExecutor`**: Responsible for the lifecycle of a single plugin. It uses a **Resolver Chain** to perform dependency injection. This chain-of-responsibility pattern makes the injection logic for different types of dependencies (services, data, paths, configs) highly modular and extensible.
+- **`PluginContext`**: A tailored context environment for each plugin, encapsulating `DataHub`, `Logger`, path information, and the final, effective configuration parameters for that plugin instance.
 
-*   **定义**: 插件与`DataHub`之间的数据交互，通过字符串名称（例如 `data_hub.get("some_data")`）进行，而非通过严格的、在代码中定义的静态接口。
+### II. Configuration Core
+- **`ConfigManager`**: Acts as a run-specific, stateless **configuration calculator**. At the start of a pipeline run, the `PipelineRunner` instantiates it with all raw configuration sources (global config, case config, and all relevant plugin default configs). The `ConfigManager` then performs a deep merge to produce the two final, authoritative configuration objects for the run: the globally merged `data_sources` map for the `DataHub`, and the specific parameter map for each plugin instance.
 
-*   **设计理由 (Why we do this)**:
-    *   **最大化灵活性**: 这是为了赋予使用者最大的控制权。用户可以通过配置文件，自由地组合、替换、复用插件，实现复杂的数据流，而不受僵硬接口的束缚。
-    *   **加速开发**: 插件开发者可以快速实现核心逻辑，无需编写复杂的接口定义或数据类，极大地提升了原型开发和实验的效率。
+### III. Data Core
+- **`DataHub`**: The central data exchange, acting as an in-memory container for all data flowing through the pipeline. It provides plugins with a unified, abstract interface for data access, decoupling them from the underlying storage details.
+- **I/O Abstraction via `Handlers`**: `DataHub` delegates I/O operations to a system of extensible `Handlers`. This mechanism separates the logical data identifier (e.g., "raw_telemetry") from the physical read/write logic (e.g., loading a specific CSV file). Handlers are discovered automatically via the `@handler` decorator, making the framework's I/O capabilities easy to extend.
 
-*   **使用者的责任**:
-    *   此设计将保证**数据流正确性**的责任完全交给了使用者。
-    *   使用者在编排`case.yaml`中的`pipeline`时，必须精确地保证后一个插件`get`的数据名，与前一个插件`register`的数据名完全一致。框架本身不会对此进行静态检查，相关错误只会在运行时暴露。
+### IV. Extensibility Subsystem
+- **`@plugin` Decorator**: Used to register a function as a plugin. The framework automatically discovers all functions decorated with `@plugin` across specified modules.
+- **`@handler` Decorator**: Used to register a class as a data handler. The framework automatically discovers all classes decorated with `@handler`, making it simple to add support for new file types.
 
-# 项目核心功能与机制 (代码级分析)
+# 3. Feature Checklist
 
-**I. 执行核心 (Execution Core)**
+This checklist is used to record the core features that the project must support, ensuring they are not overlooked in future refactoring.
 
-*   **1. 流水线协调器 (`PipelineRunner`)**:
-    *   **机制**: 作为核心引擎，它严格按照 `case.yaml` 中 `pipeline` 数组定义的顺序，依次实例化并执行每个插件。
-    *   **要求**: 负责在每个插件执行前后，维护 `DataHub` 的状态，确保数据在插件间正确流动。
-
-*   **2. 插件独立运行器 (`plugin_helper`)**:
-    *   **机制**: 提供 `run_plugin_standalone` 鍜 `run_single_plugin_by_name` 鍔熻兘锛屽厑璁镐换浣曟彃浠惰劚绂诲畬鏁寸殑 `pipeline`锛屼綔涓轰竴涓嫭绔嬬殑鑴氭湰鐩存帴杩愯銆
-    *   **瑕佹眰**: 鐙珛杩愯鏃讹紝瀹冧細妯℃嫙 `pipeline` 鐜锛岃嚜鍔ㄥ姞杞藉叏灞€閰嶇疆銆佹渚嬮厤缃紝骞跺垵濮嬪寲 `DataHub`锛岃繖瀵逛簬鎻掍欢鐨勭嫭绔嬪紑鍙戝拰璋冭瘯鑷冲叧閲嶈銆
-
-**II. 配置处理核心 (Configuration Core)**
-
-*   **1. 分层配置管理器 (`ConfigManager`)**:
-    *   **机制**: 负责从文件系统加载 `global.yaml` 和 `case.yaml`。
-    *   **要求**: 它的核心职责是解析路径（如 `project_root`, `cases_root`）并为其他模块提供统一的配置访问接口。
-
-*   **2. 插件配置处理器 (`PluginConfigProcessor`)**:
-    *   **机制**: 这是连接 `ConfigManager` 和单个插件的桥梁。它在插件运行前，专门负责准备该插件的最终配置。
-    *   **要求**:
-        *   **配置合并**: 必须严格按照 **Case > Global > 插件默认** 的优先级，将 `case.yaml` 中的参数覆盖到插件的默认 `.yaml` 配置上。
-        *   **动态变量替换**: 必须自动替换配置值中的动态变量，例如将字符串 `{case_path}` 替换为实际的案例路径，实现配置的动态化。
-
-*   **3. 配置校验与模型化 (Pydantic-based Validation)**:
-    *   **机制**: 插件可以定义一个继承自`pydantic.BaseModel`的`CONFIG_MODEL`。`PluginExecutor`在执行前，会自动使用此模型来校验和转换配置字典。
-    *   **要求**: 必须实现配置的快速失败（在插件运行前就捕获错误）、类型安全，并将清晰的、经过验证的配置对象传递给插件。
-
-**III. 数据核心 (Data Core)**
-
-*   **1. 集中式数据总线 (`DataHub`)**:
-    *   **机制**: 它是一个贯穿整个 `pipeline` 生命周期的单例服务。其内部通过字典来持有数据对象，扮演着“数据状态管理器”的角色。
-    *   **要求**:
-        *   **统一访问**: 为所有插件提供 `get_data()` 和 `add_data()` 方法，作为数据存取的唯一入口。
-        *   **数据隔离**: 插件不直接互相通信，所有数据交换必须通过 `DataHub` 进行，以实现解耦。
-
-*   **2. 可扩展数据处理器 (`Handlers`)**:
-    *   **机制**: `DataHub` 的一项关键能力。它通过一个 `handlers` 注册表，将数据的“标识符”与具体的“读/写逻辑”分离。
-    *   **要求**:
-        *   **接口统一**: 所有 `Handler`（如 `CsvHandler`, `JsonHandler`）都必须实现共同的 `read()` 和 `write()` 接口。
-        *   **懒加载**: `DataHub` 在被请求获取某个数据时，会根据其在 `data_sources` 配置中的类型，选择合适的 `Handler` 进行实时的文件读取。
-
-**IV. 插件子系统 (Plugin Subsystem)**
-
-*   **1. 插件基类 (`BasePlugin`)**:
-    *   **机制**: 一个极其轻量的基类，仅定义了插件必须实现的 `__init__(self, config)` 和 `run(self, data_hub)` 两个核心方法。
-    *   **要求**: 插件的开发体验必须简单：继承基类，实现 `run` 方法，然后提供一个默认的 `.yaml` 配置文件。
-
-*   **2. 插件自动发现 (Plugin Auto-Discovery)**:
-    *   **机制**: 通过 `pkgutil` 和 `inspect` 标准库，在程序启动时动态地扫描 `plugins` 包。
-    *   **要求**: 无需任何手动注册，只要是`BasePlugin`的子类且位于`plugins`目录下，就能被框架自动找到并使用。
-
-*   **3. 插件自动文档化 (Plugin Auto-Documentation)**:
-    *   **机制**: `generate-docs` 命令利用自动发现机制，遍历所有插件。
-    *   **要求**: 必须能自动提取每个插件的文档字符串（docstring）及其默认的`.yaml`配置，聚合成一个统一的 `PLUGINS.md` 文件，作为给开发者的参考文档。
-
-**V. 项目工具与质量保证 (Tooling & QA)**
-
-*   **1. 端到端测试 (`e2e_test.py`)**:
-    *   **机制**: 一个独立的测试脚本，通过实际运行一个预设的 `demo` 案例，并断言最终输出结果是否符合预期。
-    *   **要求**: 它是保证所有核心机制（从配置加载到插件执行再到数据处理）正确协同工作的最终防线。
-
-*   **2. 案例模板化**:
-    *   **机制**: `run.py` 中的 `pipeline` 命令通过 `shutil.copy` 实现。
-    *   **要求**: 提供一种快速引导新案例的方法，确保新案例具有标准化的目录结构和配置文件。
-
----
-
-# 未来架构考虑 (Future Architectural Considerations)
-
-## 1. 引入 `PluginContext` (待议)
-
-*   **提议**: 将当前 `plugin.run(self, data_hub)` 的方法签名重构为 `plugin.run(self, context)`。
-*   **目的**: 创建一个 `PluginContext` 对象，作为统一的上下文环境传递给每个插件。此对象将封装对框架核心服务（如 `DataHub`、最终生效的配置、日志记录器、项目及案例路径等）的访问。
-*   **优势**:
-    *   **稳定的API**: 未来向框架添加新服务时，无需更改插件的 `run` 方法签名，增强了向前兼容性，符合“最佳实践”准-则。
-    *   **简化开发**: 插件开发者可以从单一入口 (`context`) 获取所有依赖，降低了心智负担，提升了代码的清晰度。
-    *   **提升可测试性**: 为插件编写单元测试时，只需构建一个模拟的 `Context` 对象即可，使测试设置更简单。
-*   **潜在风险**:
-    *   需要精心设计 `PluginContext` 类，避免其成为无所不包的“上帝对象”。
-*   **后续步骤**:
-    *   在进行下一次重大重构时，优先考虑此项设计。
-    *   设计并实现一个明确的 `PluginContext` 类（可使用 `dataclasses` 或 `Pydantic`）。
-    *   修改 `PluginExecutor` 和 `plugin_helper` 以构建和传递此上下文。
-
----
-
-# 工作状态记录
-
-## 指令格式（用于未来）
-当您需要我记录当前工作状态时，请使用以下格式：
-`# 指令：记录工作状态
-
-**任务**: <填写任务目标>
-**计划**: <填写为完成任务需要执行的步骤>
-**进展**: <填写当前进展到哪一步了>`
-
----
-
-## 当前工作记录 (2025-09-03)
-
-**任务**: 完成插件系统的重构并修复相关 bug。
-*   **目标**: 将插件系统从基于类的架构迁移到基于函数和装饰器的架构，并确保所有功能正常运行。
-
-**工作内容**:
-1.  **架构迁移**:
-    *   定义了 `@plugin` 装饰器用于注册函数式插件。
-    *   实现了 `PluginSpec` 数据类来存储插件元数据。
-    *   更新了 `PluginExecutor` 以支持基于函数签名的依赖注入。
-    *   修改了 `PipelineRunner` 以适配新的插件发现和执行流程。
-    *   移除了对已不存在的 `BasePlugin` 类的依赖。
-2.  **Bug 修复**:
-    *   修复了 `case.yaml` 中插件名称与代码注册名称不匹配的问题（`LatencyCompensator` -> `Latency Compensator`, `FrameRenderer` -> `Frame Renderer`）。
-    *   修复了 `plugin_executor.py` 中 Pydantic 依赖未导入的问题。
-    *   修复了 `plugin_executor.py` 中调用 `DataHub` 方法名错误的问题（`add_data` -> `register`）。
-    *   修复了 `run.py` 中 `run_single_plugin_by_name` 导入被注释掉的问题。
-    *   重写了 `plugin_helper.py` 以完全适配新的函数式插件架构，包括正确的上下文创建和插件执行逻辑。
-    *   修复了 `e2e_test.py` 和 `case.yaml` 中因插件名称变更和路径转义错误导致的问题。
-3.  **验证**:
-    *   通过了完整的端到端测试（`e2e_test.py`），涵盖数据生成、全流水线运行、单插件独立运行和文档生成。
-
-**进展**:
-*   插件系统重构**已完成**。
-*   所有已知的与重构相关的 **bug 均已修复**。
-*   系统功能经过 **端到端测试验证，运行正常**。
-*   项目代码已更新至支持新的函数式插件架构。
+- **Pluggable Architecture**: Core business logic is implemented by independent, reusable plugins.
+- **Functional Plugins**: Supports creating plugins using a simple `@plugin` decorator without writing classes.
+- **Unified `PluginContext`**: All plugins receive a `PluginContext` object containing core services and configuration during execution.
+- **Dependency-Injected Execution**: Plugin function parameters are automatically injected via type hints, without manual retrieval.
+- **Layered Configuration**:
+    - Supports four levels of configuration priority: **Command-line arguments > Case configuration > Global configuration > Plugin default configuration**.
+    - Automatically replaces dynamic variables (e.g., `{case_path}`) in the configuration.
+- **Configuration Validation**: Plugins can use Pydantic models to automatically validate and convert their configuration.
+- **Standalone Plugin Execution**: Any plugin can be run directly as a standalone script, separate from the full pipeline.
+- **Centralized Data Hub**: All data is exchanged through the `DataHub`, achieving decoupling between plugins.
+- **Extensible I/O Handlers**: `DataHub` supports reading and writing different data formats through pluggable `Handlers` registered with the `@handler` decorator.
+- **Automatic Discovery**: The framework automatically discovers all plugins (`@plugin`) and handlers (`@handler`) in the project without manual registration.
+- **Automatic Documentation Generation**: Provides a command-line tool that can automatically generate `PLUGINS.md` documentation for all plugins and handlers based on their docstrings, signatures, and default configurations.
+- **Plugin Enable/Disable**: Allows enabling or disabling individual plugins via an `enable: true/false` switch in `case.yaml`.
+- **Flexible Path Handling**: All path configurations in the project support both absolute and relative paths.
+- **Case Templating**: Provides a command-line tool to quickly create new standardized cases from templates.
+- **End-to-End Testing**: The project includes an end-to-end test to verify the correct coordination of the entire framework's core functions.

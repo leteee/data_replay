@@ -3,7 +3,9 @@ from typing import Any
 import shutil
 
 from .base import DataHandler
+from .decorator import handler
 
+@handler(name="file", extensions=[])
 class FileHandler(DataHandler):
     """
     A handler that returns a file handle (file-like object) for direct streaming or processing.

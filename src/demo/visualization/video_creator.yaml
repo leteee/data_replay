@@ -11,7 +11,7 @@ data_sources:
   input_frames:
     path: "intermediate/rendered_frames"
     description: "Input frames directory"
-    handler: DirectoryHandler
+    handler: dir
   
   # Output video file
   output_video:

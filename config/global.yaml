@@ -2,3 +2,5 @@ cases_root: "./cases"
 log_level: "INFO"
 log_file: "./logs/app.log"
 plugin_enable: True
+plugin_modules:
+  - demo
