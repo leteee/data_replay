@@ -36,10 +36,10 @@ def generate_data():
     """
     Cleans old data and generates new, more realistic mock vehicle data.
     """
+    os.makedirs(CASE_DIR, exist_ok=True)
     clean_data()
     print("--- Starting demo data generation ---")
     os.makedirs(FRAMES_DIR, exist_ok=True)
-    print(f"Created directory: {FRAMES_DIR}")
 
     dt_s = 1.0 / FPS
     timestamps_s = np.linspace(0, (NUM_FRAMES - 1) * dt_s, NUM_FRAMES)

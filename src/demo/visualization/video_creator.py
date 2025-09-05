@@ -7,18 +7,21 @@ from logging import Logger
 from pydantic import BaseModel, Field
 
 from nexus.core.plugin.decorator import plugin
+from typing import Dict, Any
 
 
 class VideoCreatorConfig(BaseModel):
     """Configuration model for the Video Creator plugin."""
-    input_dir: str = Field(
-        default="intermediate/rendered_frames",
-        description="Directory containing the input image frames, relative to the case path."
-    )
-    output_file: str = Field(
-        default="output/replay_video.mp4",
-        description="Path for the output video file, relative to the case path."
-    )
+    data_sources: Dict[str, Any] = {
+        "rendered_frames_dir": {
+            "handler": "dir",
+            "path": "intermediate/rendered_frames"
+        },
+        "replay_video": {
+            "handler": "file",
+            "path": "output/replay_video.mp4"
+        }
+    }
     fps: int = Field(
         default=10,
         description="Frames per second for the output video."
@@ -27,27 +30,26 @@ class VideoCreatorConfig(BaseModel):
 
 @plugin(
     name="Video Creator",
-    output_key=None  # This plugin writes a file to disk
+    default_config=VideoCreatorConfig
 )
 def create_video(
     # Dependencies from DataHub
-    input_frames: Path, # <-- Injected by DataHub using DirectoryHandler
+    rendered_frames_dir: Path, # <-- Injected by DataHub using DirectoryHandler
     # Dependencies from Plugin Config
     config: VideoCreatorConfig,
     # Dependencies from Context
     logger: Logger,
     case_path: Path
-) -> None:
+) -> Path:
     """
     Creates a video from a sequence of image frames.
     """
-    # input_dir_path = case_path / config.input_dir # <-- Old way: use config
-    input_dir_path = input_frames  # <-- New way: use Path injected by DataHub
-    output_video_path = case_path / config.output_file
+    input_dir_path = rendered_frames_dir
+    output_video_path = case_path / config.data_sources["replay_video"]["path"]
 
     if not input_dir_path.exists() or not input_dir_path.is_dir():
         logger.error(f"Input directory does not exist: {input_dir_path}")
-        return
+        return None
 
     image_files = sorted(
         [f for f in input_dir_path.glob('*.png')],
@@ -84,3 +86,4 @@ def create_video(
 
     video.release()
     logger.info(f"Successfully created video: {output_video_path}")
+    return output_video_path

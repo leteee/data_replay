@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 from logging import Logger
-from typing import List
+from typing import List, Dict, Any
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,16 @@ from nexus.core.plugin.decorator import plugin
 
 class LatencyCompensatorConfig(BaseModel):
     """Configuration model for the Latency Compensator plugin."""
+    data_sources: Dict[str, Any] = {
+        "latent_measurements": {
+            "handler": "csv",
+            "path": "raw_data/latent_measurements.csv"
+        },
+        "predicted_states": {
+            "handler": "csv",
+            "path": "intermediate/predicted_states.csv"
+        }
+    }
     latency_to_compensate_s: float = 0.2
     measurement_noise_pos: float = 0.5
     measurement_noise_vel: float = 0.8
@@ -91,7 +101,8 @@ class _EKF_CTRV:
 
 @plugin(
     name="Latency Compensator",
-    output_key="predicted_states"
+    output_key="predicted_states",
+    default_config=LatencyCompensatorConfig
 )
 def compensate_latency(
     # Dependencies from DataHub

@@ -24,6 +24,9 @@ This section delves into the internal workings of the framework's key components
 - **`@plugin` Decorator**: Used to register a function as a plugin. The framework automatically discovers all functions decorated with `@plugin` across specified modules.
 - **`@handler` Decorator**: Used to register a class as a data handler. The framework automatically discovers all classes decorated with `@handler`, making it simple to add support for new file types.
 
+### V. Developer Experience & Tooling
+- **Unified CLI (`data-replay`)**: A single, `Typer`-based command-line interface (`data-replay`) provides all framework interactions, including running pipelines, generating data, and managing documentation. This centralizes tooling and improves user experience.
+
 # 3. Feature Checklist
 
 This checklist is used to record the core features that the project must support, ensuring they are not overlooked in future refactoring.
@@ -40,8 +43,8 @@ This checklist is used to record the core features that the project must support
 - **Centralized Data Hub**: All data is exchanged through the `DataHub`, achieving decoupling between plugins.
 - **Extensible I/O Handlers**: `DataHub` supports reading and writing different data formats through pluggable `Handlers` registered with the `@handler` decorator.
 - **Automatic Discovery**: The framework automatically discovers all plugins (`@plugin`) and handlers (`@handler`) in the project without manual registration.
-- **Automatic Documentation Generation**: Provides a command-line tool that can automatically generate `PLUGINS.md` documentation for all plugins and handlers based on their docstrings, signatures, and default configurations.
+- **Automatic Documentation Generation**: Provides a command-line tool that can automatically generate `REFERENCE.md` documentation for all plugins and handlers based on their docstrings, signatures, and default configurations.
 - **Plugin Enable/Disable**: Allows enabling or disabling individual plugins via an `enable: true/false` switch in `case.yaml`.
 - **Flexible Path Handling**: All path configurations in the project support both absolute and relative paths.
 - **Case Templating**: Provides a command-line tool to quickly create new standardized cases from templates.
-- **End-to-End Testing**: The project includes an end-to-end test to verify the correct coordination of the entire framework's core functions.
+- **End-to-End Testing**: The project includes a robust, `pytest`-based end-to-end test suite that dynamically validates the correct coordination of the entire framework's core functions, including data generation, pipeline execution, and documentation generation.

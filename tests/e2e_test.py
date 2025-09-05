@@ -1,73 +1,89 @@
 import subprocess
 import sys
+import shutil
+import yaml
 from pathlib import Path
-import logging
-import os
+import pytest
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-logger = logging.getLogger(__name__)
-
-# Project root is two levels up from this script
+# --- Constants ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RUN_SCRIPT = PROJECT_ROOT / "run.py"
-DEMO_CASE = "demo"
+CLI_MODULE = "nexus.cli"
+DEMO_CASE_NAME = "demo"
+DEMO_CASE_PATH = PROJECT_ROOT / "cases" / DEMO_CASE_NAME
 
-# List of plugins from cases/demo/case.yaml
-PLUGINS = [
-    "Latency Compensator",
-    "Frame Renderer",
-    "Video Creator"
-]
+# --- Helper Functions ---
 
-def run_command(command_args, description):
-    """Helper to run shell commands and log output."""
-    logger.info(f"--- {description} ---")
-    full_command = [sys.executable, str(RUN_SCRIPT)] + command_args
-    logger.info(f"Executing: {' '.join(full_command)}")
-    try:
-        result = subprocess.run(full_command, check=True, capture_output=True, text=True)
-        logger.info(f"STDOUT:\n{result.stdout}")
-        if result.stderr:
-            logger.warning(f"STDERR:\n{result.stderr}")
-        logger.info(f"--- {description} COMPLETED ---")
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"--- {description} FAILED ---")
-        logger.error(f"Command failed with exit code {e.returncode}")
-        logger.error(f"STDOUT:\n{e.stdout}")
-        logger.error(f"STDERR:\n{e.stderr}")
-        return False
-    except Exception as e:
-        logger.error(f"--- {description} FAILED ---")
-        logger.error(f"An unexpected error occurred: {e}")
-        return False
+def load_demo_case_plugins():
+    """Dynamically loads plugin names from the demo case yaml file."""
+    case_yaml_path = DEMO_CASE_PATH / "case.yaml"
+    if not case_yaml_path.exists():
+        # This will be handled by the generate-data test, but good to be robust
+        return []
+    with open(case_yaml_path, 'r') as f:
+        case_config = yaml.safe_load(f)
+    return [item['plugin'] for item in case_config.get('pipeline', [])]
 
-def main():
-    logger.info("Starting End-to-End Test Suite")
+def run_cli_command(command_args):
+    """Runs a CLI command and returns the result."""
+    full_command = [sys.executable, "-m", CLI_MODULE] + command_args
+    return subprocess.run(
+        full_command, 
+        check=True, 
+        capture_output=True, 
+        text=True, 
+        cwd=PROJECT_ROOT
+    )
 
-    # 1. Data Generation
-    if not run_command(["generate-data"], "Generating Demo Data"):
-        logger.error("Test failed at Data Generation step.")
-        sys.exit(1)
+# --- Pytest Fixtures ---
 
-    # 2. Full Pipeline Run
-    if not run_command(["pipeline", "--case", DEMO_CASE], f"Running Full Pipeline for {DEMO_CASE} case"):
-        logger.error("Test failed at Full Pipeline Run step.")
-        sys.exit(1)
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_before_session(request):
+    """Cleans up demo case directory before any tests run."""
+    if DEMO_CASE_PATH.exists():
+        shutil.rmtree(DEMO_CASE_PATH)
+    # Optional: Add other directories to clean, like 'logs'
 
-    # 3. Run all plugins individually
-    for plugin_name in PLUGINS:
-        if not run_command(["plugin", plugin_name, "--case", DEMO_CASE], f"Running Plugin: {plugin_name} for {DEMO_CASE} case"):
-            logger.error(f"Test failed at running individual plugin: {plugin_name}.")
-            sys.exit(1)
+# --- Test Suite ---
 
-    # 4. Generate Framework Documentation
-    if not run_command(["docs"], "Generating Framework Documentation"):
-        logger.error("Test failed at Framework Documentation Generation step.")
-        sys.exit(1)
+@pytest.mark.dependency()
+def test_generate_data():
+    """Tests the 'generate-data' command and verifies its output."""
+    run_cli_command(["generate-data"])
+    
+    # Assert that key files were created
+    assert (DEMO_CASE_PATH / "case.yaml").exists(), "case.yaml not found"
+    assert (DEMO_CASE_PATH / "raw_data" / "latent_measurements.csv").exists(), "latent_measurements.csv not found"
+    assert (DEMO_CASE_PATH / "raw_data" / "video_manifest.csv").exists(), "video_manifest.csv not found"
+    assert (DEMO_CASE_PATH / "raw_data" / "frames").is_dir(), "frames directory not found"
 
-    logger.info("End-to-End Test Suite COMPLETED SUCCESSFULLY!")
+@pytest.mark.dependency(depends=["test_generate_data"])
+def test_full_pipeline():
+    """Tests the full pipeline run and verifies the final output."""
+    run_cli_command(["pipeline", "--case", DEMO_CASE_NAME])
+    
+    # Assert that the final output video was created
+    # Note: The output file name is derived from the default config for the VideoCreator plugin
+    assert (DEMO_CASE_PATH / "output" / "replay_video.mp4").exists(), "Final video output not found"
 
-if __name__ == "__main__":
-    main()
+@pytest.mark.dependency(depends=["test_full_pipeline"])
+@pytest.mark.parametrize("plugin_name", load_demo_case_plugins())
+def test_single_plugin(plugin_name):
+    """Tests running each plugin individually."""
+    run_cli_command(["plugin", plugin_name, "--case", DEMO_CASE_NAME])
+    # Assertion for single plugin runs could be more complex, e.g., checking for intermediate files.
+    # For now, we just ensure the command runs successfully.
+
+@pytest.mark.dependency(depends=["test_full_pipeline"])
+def test_generate_docs():
+    """Tests the 'docs' command and verifies its output."""
+    run_cli_command(["docs"])
+    
+    output_file = PROJECT_ROOT / 'REFERENCE.md'
+    assert output_file.exists(), "REFERENCE.md was not generated"
+    
+    # Verify content
+    content = output_file.read_text()
+    assert "# Framework Reference" in content
+    # Check if plugins from the demo case are in the docs
+    for plugin_name in load_demo_case_plugins():
+        assert f"### {plugin_name}" in content, f"{plugin_name} not found in documentation"

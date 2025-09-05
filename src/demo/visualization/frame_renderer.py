@@ -7,6 +7,7 @@ import shutil
 from logging import Logger
 
 from pydantic import BaseModel, Field
+from typing import Dict, Any
 
 from nexus.core.data.hub import DataHub
 from nexus.core.plugin.decorator import plugin
@@ -14,6 +15,20 @@ from nexus.core.plugin.decorator import plugin
 
 class FrameRendererConfig(BaseModel):
     """Configuration model for the Frame Renderer plugin."""
+    data_sources: Dict[str, Any] = {
+        "video_manifest": {
+            "handler": "csv",
+            "path": "raw_data/video_manifest.csv"
+        },
+        "predicted_states": {
+            "handler": "csv",
+            "path": "intermediate/predicted_states.csv"
+        },
+        "rendered_frames_dir": {
+            "handler": "dir",
+            "path": "intermediate/rendered_frames"
+        }
+    }
     video_manifest_key: str = "video_manifest"
     predicted_states_key: str = "predicted_states"
     rendered_frames_dir_key: str = "rendered_frames_dir"
@@ -24,7 +39,8 @@ class FrameRendererConfig(BaseModel):
 
 @plugin(
     name="Frame Renderer",
-    output_key=None  # This plugin writes files to disk, doesn't return to DataHub
+    output_key=None,  # This plugin writes files to disk, doesn't return to DataHub
+    default_config=FrameRendererConfig
 )
 def render_frames(
     # Dependencies from DataHub

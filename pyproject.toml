@@ -7,8 +7,15 @@ dependencies = [
     "numpy",
     "PyYAML",
     "Pillow",
+    "typer[all]",
+    "pytest",
+    "pytest-dependency",
 ]
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[project.scripts]
+data-replay = "nexus.cli:app"
+

@@ -48,12 +48,21 @@ class ConfigModelResolver(IParameterResolver):
     """Resolves Pydantic BaseModel parameters."""
 
     def resolve(self, parameter: inspect.Parameter, context: PluginContext) -> Any:
-        if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseModel):
-            try:
-                return parameter.annotation(**context.config)
-            except ValidationError as e:
-                raise ResolutionError(f"Config validation failed for {parameter.annotation.__name__}: {e}")
-        raise ResolutionError("Not a Pydantic config model.")
+        # Check if the parameter expects a Pydantic model
+        if not (inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseModel)):
+            raise ResolutionError("Not a Pydantic config model.")
+
+        # The ConfigManager now returns a pre-validated Pydantic model instance.
+        # We just need to check if the object in the context is of the correct type.
+        if isinstance(context.config, parameter.annotation):
+            return context.config
+        else:
+            # This case should ideally not be reached if the framework is used correctly.
+            raise ResolutionError(
+                f"Type mismatch for config model. Plugin expects "
+                f"'{parameter.annotation.__name__}' but context contains "
+                f"a '{type(context.config).__name__}'."
+            )
 
 
 class PathResolver(IParameterResolver):

@@ -30,7 +30,7 @@ A flexible, configuration-driven Python framework for building robust, extensibl
 ├── .gitignore
 ├── REFERENCE.md          # Auto-generated reference for all plugins and handlers.
 ├── README.md
-└── run.py                # Unified command-line interface (CLI) for the framework.
+└── pyproject.toml        # Project configuration and dependencies.
 ```
 
 ## Getting Started
@@ -46,33 +46,30 @@ A flexible, configuration-driven Python framework for building robust, extensibl
    cd <repository-name>
    ```
 
-2. Install the required dependencies:
+2. Install the project in editable mode. This will install all dependencies and make the `data-replay` command available in your environment.
    ```bash
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
 ## Usage: The Unified CLI
 
-All interactions with the framework are handled through the central `run.py` script.
+All interactions with the framework are handled through the central `data-replay` command.
 
 ### 1. Generate Demo Data
 
 First, generate the sample data required to run the demo case.
 
 ```bash
-python run.py generate-data
+data-replay generate-data
 ```
 
 ### 2. Run a Pipeline
 
-Execute the entire pipeline for a given case. If the case does not exist, you can create it from a template.
+Execute the entire pipeline for a given case. 
 
 ```bash
-# Run the demo pipeline (will create cases/demo/case.yaml if it doesn't exist)
-python run.py pipeline --case demo
-
-# Create a new case 'my_new_case' from the 'demo' template and run its pipeline
-python run.py pipeline --case my_new_case --template demo
+# Run the demo pipeline
+data-replay pipeline --case demo
 ```
 
 ### 3. Run a Single Plugin
@@ -81,7 +78,9 @@ Execute a specific plugin from a case definition. This is useful for debugging o
 
 ```bash
 # Example: Run only the "Frame Renderer" plugin for the demo case
-python run.py plugin "Frame Renderer" --case demo
+data-replay plugin "Latency Compensator" --case demo
+data-replay plugin "Frame Renderer" --case demo
+data-replay plugin "Video Creator" --case demo
 ```
 
 ### 4. Generate Documentation
@@ -89,8 +88,20 @@ python run.py plugin "Frame Renderer" --case demo
 Scan all registered plugins and handlers and update the `REFERENCE.md` file.
 
 ```bash
-python run.py docs
+data-replay docs
 ```
+
+## Testing
+
+The project includes a robust end-to-end test suite built with `pytest` to ensure all core functionalities are working as expected. These tests cover data generation, full pipeline execution, individual plugin runs, and documentation generation.
+
+To run the entire test suite, navigate to the project root and execute:
+
+```bash
+pytest tests/e2e_test.py
+```
+
+This will automatically generate necessary demo data and clean up the environment before and after the tests.
 
 ## Core Concepts
 
@@ -101,7 +112,7 @@ This file is the heart of a pipeline run. It defines two key sections:
 - **`data_sources`**: A catalog of all data "nouns" in the pipeline. It maps a logical name (e.g., `predicted_states`) to a physical path and an optional handler, allowing the framework to manage I/O.
 - **`pipeline`**: A list of the plugins (the "verbs") to execute in sequence. You can enable/disable plugins and override their default parameters here.
 
-*Example snippet from `cases/demo/case.yaml`:*
+*Example snippet from `cases/demo/case.yaml`.*
 ```yaml
 pipeline:
   # The first plugin in the demo compensates for latency.
@@ -116,7 +127,6 @@ pipeline:
 ```
 
 ### Plugins (`@plugin`)
-
 A plugin is a simple Python function decorated with `@plugin`. It defines the logic for a single processing step. Its parameters are automatically supplied by the dependency injection system.
 
 *Example Plugin Signature:*
@@ -125,7 +135,7 @@ from nexus.core.plugin.decorator import plugin
 from logging import Logger
 import pandas as pd
 
-@plugin(name="My Awesome Plugin", output_key="processed_data")
+@plugin(name="My Awesome Plugin")
 def my_plugin(
     raw_data: pd.DataFrame,  # Injected from DataHub by name
     logger: Logger,          # Core service injected by type
@@ -137,5 +147,6 @@ def my_plugin(
 ```
 
 ### Handlers (`@handler`)
-
 A Handler is a class decorated with `@handler` that teaches the `DataHub` how to read and write a specific data format (e.g., `.csv`, `.parquet`, `.json`). The framework automatically discovers them, making it easy to add support for new file types.
+
+```
