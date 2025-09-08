@@ -89,9 +89,9 @@ class ConfigManager:
         """
         final_sources = deepcopy(self.discovered_data_sources)
 
-        for conf in self.plugin_defaults_map.values():
-            final_sources = deep_merge(final_sources, conf.get('data_sources', {}))
-
+        # Note: plugin_defaults_map contains default values from plugin config models,
+        # not data_sources declarations, so we don't merge them here.
+        
         final_sources = deep_merge(final_sources, self.global_config.get('data_sources', {}))
         final_sources = deep_merge(final_sources, self.case_config.get('data_sources', {}))
 
