@@ -13,16 +13,15 @@ Renders predicted and ground truth data onto a series of image frames,
 creating a visual representation of the EKF predictions.
 
 **Core Dependencies Injected:**
-`Path`, `Logger`, `Path`
+`Logger`
 
 **Configuration Parameters (from Pydantic Model):**
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `data_sources` | `Dict` | `{'video_manifest': {'handler': 'csv', 'path': 'raw_data/video_manifest.csv'}, 'predicted_states': {'handler': 'csv', 'path': 'intermediate/predicted_states.csv'}, 'rendered_frames_dir': {'handler': 'dir', 'path': 'intermediate/rendered_frames'}}` |  |
-| `video_manifest_key` | `str` | `video_manifest` |  |
-| `predicted_states_key` | `str` | `predicted_states` |  |
-| `rendered_frames_dir_key` | `str` | `rendered_frames_dir` |  |
+| `video_manifest` | `DataFrame` | `PydanticUndefined` |  |
+| `predicted_states` | `DataFrame` | `PydanticUndefined` |  |
+| `rendered_frames_dir` | `Path` | `PydanticUndefined` |  |
 | `zoom_factor` | `float` | `5.0` |  |
 | `circle_radius_px` | `int` | `15` |  |
 | `circle_width_px` | `int` | `3` |  |
@@ -40,7 +39,8 @@ Rate and Velocity (CTRV) model.
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `data_sources` | `Dict` | `{'latent_measurements': {'handler': 'csv', 'path': 'raw_data/latent_measurements.csv'}, 'predicted_states': {'handler': 'csv', 'path': 'intermediate/predicted_states.csv'}}` |  |
+| `measurements` | `DataFrame` | `PydanticUndefined` |  |
+| `predicted_states` | `Optional` | `None` |  |
 | `latency_to_compensate_s` | `float` | `0.2` |  |
 | `measurement_noise_pos` | `float` | `0.5` |  |
 | `measurement_noise_vel` | `float` | `0.8` |  |
@@ -49,20 +49,20 @@ Rate and Velocity (CTRV) model.
 | `process_noise_std_vel` | `float` | `0.8` |  |
 | `process_noise_std_yaw` | `float` | `0.5` |  |
 | `process_noise_std_yaw_rate` | `float` | `0.3` |  |
-| `input_key` | `str` | `latent_measurements` |  |
 
 ### Video Creator
 
 Creates a video from a sequence of image frames.
 
 **Core Dependencies Injected:**
-`Path`, `Logger`, `Path`
+`Logger`
 
 **Configuration Parameters (from Pydantic Model):**
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `data_sources` | `Dict` | `{'rendered_frames_dir': {'handler': 'dir', 'path': 'intermediate/rendered_frames'}, 'replay_video': {'handler': 'file', 'path': 'output/replay_video.mp4'}}` |  |
+| `rendered_frames_dir` | `Path` | `PydanticUndefined` |  |
+| `replay_video` | `Optional` | `None` |  |
 | `fps` | `int` | `10` | Frames per second for the output video. |
 
 ---

@@ -61,6 +61,9 @@ def test_full_pipeline():
     """Tests the full pipeline run and verifies the final output."""
     run_cli_command(["pipeline", "--case", DEMO_CASE_NAME])
     
+    # Assert that the intermediate output from the refactored plugin exists
+    assert (DEMO_CASE_PATH / "results" / "predicted_states.parquet").exists(), "Intermediate parquet output not found"
+    
     # Assert that the final output video was created
     # Note: The output file name is derived from the default config for the VideoCreator plugin
     assert (DEMO_CASE_PATH / "output" / "replay_video.mp4").exists(), "Final video output not found"

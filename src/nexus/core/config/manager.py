@@ -5,7 +5,8 @@ import logging
 from pydantic import BaseModel
 
 from ..plugin.spec import PluginSpec
-from ..plugin.decorator import PLUGIN_REGISTRY # <-- Import added
+from ..plugin.decorator import PLUGIN_REGISTRY
+from ..plugin.typing import DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -33,104 +34,86 @@ def deep_merge(dict1, dict2):
 class ConfigManager:
     """
     A stateless calculator for merging hierarchical configurations for a pipeline run.
-    It is instantiated by the PipelineRunner with all necessary configuration sources.
     """
 
     def __init__(self, *, global_config: dict, case_config: dict,
-                 plugin_registry: dict[str, PluginSpec], cli_args: dict = None):
-        """
-        Initializes the ConfigManager for a single run.
-
-        Args:
-            global_config: The loaded global.yaml config.
-            case_config: The loaded case.yaml config for the current run.
-            plugin_registry: The registry of all discovered plugins.
-            cli_args: Config overrides from the command line.
-        """
+                 plugin_registry: dict[str, PluginSpec], discovered_data_sources: dict,
+                 case_path: Path, project_root: Path, cli_args: dict = None):
         self.global_config = global_config
         self.case_config = case_config
         self.cli_args = cli_args or {}
+        self.discovered_data_sources = discovered_data_sources
+        self.case_path = case_path
+        self.project_root = project_root
 
-        # 1. Extract default configurations from the plugin registry
         self.plugin_defaults_map = {}
         for name, spec in plugin_registry.items():
             if spec.config_model and issubclass(spec.config_model, BaseModel):
-                # Instantiate the Pydantic model to get default values
-                self.plugin_defaults_map[name] = spec.config_model().dict()
+                # Get the raw dict representation (this will include DataSource objects)
+                model_dict = {}
+                # Filter out DataSource fields as they should not be in the config dict
+                for field_name, field in spec.config_model.model_fields.items():
+                    # Check if any of the metadata is a DataSource
+                    has_data_source = any(isinstance(item, DataSource) for item in field.metadata)
+                    if not has_data_source:
+                        # For non-DataSource fields, we can get their default values
+                        if field.default is not ...:
+                            model_dict[field_name] = field.default
+                # Now exclude unset fields to get only defaults
+                self.plugin_defaults_map[name] = model_dict
             else:
                 self.plugin_defaults_map[name] = {}
         logger.debug(f"Extracted default configs for {len(self.plugin_defaults_map)} plugins.")
 
-        # 2. Immediately calculate the final merged data sources
         self._merged_data_sources = self._merge_all_data_sources()
-        logger.debug("Final merged data sources calculated.")
+        logger.debug("Final merged data sources calculated and resolved.")
+
+    def _resolve_paths_in_data_sources(self, sources: dict) -> dict:
+        """Resolves all path strings in the data_sources dictionary."""
+        resolved_sources = deepcopy(sources)
+        for alias, config in resolved_sources.items():
+            if "path" not in config or not isinstance(config["path"], str):
+                continue
+
+            path_str = config["path"].format(project_root=self.project_root)
+            path_obj = Path(path_str)
+            if not path_obj.is_absolute():
+                path_obj = self.case_path / path_obj
+            
+            config["path"] = path_obj.resolve()
+        return resolved_sources
 
     def _merge_all_data_sources(self) -> dict:
         """
-        Merges data_sources from all layers with the correct priority.
-        Priority Order (lowest to highest): Plugin Defaults -> Global -> Case
+        Merges data_sources from all layers and resolves their paths.
         """
-        final_sources = {}
+        final_sources = deepcopy(self.discovered_data_sources)
 
-        # 1. Merge all plugin default data_sources
         for conf in self.plugin_defaults_map.values():
             final_sources = deep_merge(final_sources, conf.get('data_sources', {}))
 
-        # 2. Merge global config on top
         final_sources = deep_merge(final_sources, self.global_config.get('data_sources', {}))
-
-        # 3. Merge case config on top
         final_sources = deep_merge(final_sources, self.case_config.get('data_sources', {}))
 
-        return final_sources
+        return self._resolve_paths_in_data_sources(final_sources)
 
     def get_data_sources(self) -> dict:
-        """Returns the final, fully merged data_sources dictionary."""
+        """Returns the final, fully merged and resolved data_sources dictionary."""
         return self._merged_data_sources
 
-    def get_plugin_config(self, *, plugin_name: str, case_plugin_config: dict) -> BaseModel | dict:
+    def get_plugin_config(self, *, plugin_name: str, case_plugin_config: dict) -> dict:
         """
-        Calculates the final, merged configuration for a single plugin instance.
-        It also performs validation if a Pydantic model is associated with the plugin.
-
-        Priority Order (lowest to highest):
-        1. Plugin Default Config (from Pydantic model)
-        2. Global Config
-        3. Case Specific Config
-        4. Command Line Overrides
-
-        Args:
-            plugin_name: The name of the plugin.
-            case_plugin_config: The configuration for this plugin from the case.yaml file.
-
-        Returns:
-            A validated Pydantic model instance if a model is defined, otherwise a dictionary.
+        Calculates the final, merged configuration dictionary for a single plugin instance.
+        The responsibility of instantiating the Pydantic model is now with the PipelineRunner.
         """
-        # 1. Start with the plugin's own defaults
         plugin_default = self.plugin_defaults_map.get(plugin_name, {})
         final_config = deepcopy(plugin_default)
 
-        # 2. Merge global config on top
         final_config = deep_merge(final_config, self.global_config)
-
-        # 3. Merge the case-specific settings
         final_config = deep_merge(final_config, case_plugin_config)
-
-        # 4. Merge command-line arguments on top
         final_config = deep_merge(final_config, self.cli_args)
         
-        # Clean up data_sources key
         if 'data_sources' in final_config:
             del final_config['data_sources']
             
-        # 5. Validate with Pydantic model if available
-        # This is a key benefit of the refactoring
-        spec = PLUGIN_REGISTRY.get(plugin_name)
-        if spec and spec.config_model:
-            try:
-                return spec.config_model(**final_config)
-            except Exception as e:
-                logger.error(f"Configuration validation failed for plugin '{plugin_name}': {e}")
-                raise
-        
         return final_config

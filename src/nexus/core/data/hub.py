@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class DataSource(BaseModel):
     """Represents a registered data source that can be loaded or saved."""
     path: Path
-    handler: Optional[str] = None
+    handler_config: Dict[str, Any]
 
     class Config:
         arbitrary_types_allowed = True
@@ -26,73 +26,57 @@ class DataSource(BaseModel):
 class DataHub:
     """
     Manages the state of data in the pipeline.
-    - Caches data in memory (lazy loading).
-    - Tracks persisted data files.
-    - Uses a handler system for loading and saving different file formats.
     """
 
-    def __init__(self, case_path: Path, data_sources: Dict[str, Any] = None, logger: Logger = None):
-        """
-        Initializes the DataHub.
-        Args:
-            case_path: The root path of the current case.
-            data_sources: A dictionary defining the data items and their file paths.
-        """
+    def __init__(self, case_path: Path, logger: Logger = None):
         self._case_path = case_path
-        self._data: Dict[str, Any] = {}  # In-memory cache: {name: data}
-        self._registry: Dict[str, DataSource] = {}  # Maps data name to its DataSource info
+        self._data: Dict[str, Any] = {}
+        self._registry: Dict[str, DataSource] = {}
         self.logger = logger if logger else logging.getLogger(__name__)
-
-        if data_sources:
-            for name, source_info in data_sources.items():
-                if "path" in source_info:
-                    path = Path(source_info["path"])
-                    if not path.is_absolute():
-                        # Resolve relative paths from the case directory
-                        path = self._case_path / path
-                    
-                    self._registry[name] = DataSource(
-                        path=path,
-                        handler=source_info.get("handler")
-                    )
-        
-            self.logger.info(f"DataHub initialized for case {case_path.name} with {len(self._registry)} registered sources.")
 
     def add_data_sources(self, new_sources: dict):
         """Merges new data source definitions into the DataHub's registry."""
         for name, source_info in new_sources.items():
-            # Always add/update the source. The priority is handled by the order of calls.
-            if "path" in source_info:
-                path = Path(source_info["path"])
-                if not path.is_absolute():
-                    path = self._case_path / path
-                
-                # Store a DataSource object instead of a dict
-                self._registry[name] = DataSource(
-                    path=path,
-                    handler=source_info.get("handler")
-                )
-                self.logger.debug(f"Added/Updated data source: '{name}' -> {path}")
+            if "path" not in source_info:
+                continue
+
+            path = Path(source_info["path"])
+            if not path.is_absolute():
+                path = self._case_path / path
+
+            # Handle handler_args from PipelineRunner
+            handler_conf = source_info.get("handler_args", {})
+            if isinstance(handler_conf, str):
+                handler_conf = {"name": handler_conf}
+            
+            # Set default for must_exist if not provided
+            handler_conf.setdefault("must_exist", True)
+
+            self._registry[name] = DataSource(
+                path=path,
+                handler_config=handler_conf
+            )
+            self.logger.debug(f"Added/Updated data source: '{name}' -> {path}")
+
+    def _get_handler_instance(self, source: DataSource):
+        """Instantiates a handler based on the source configuration."""
+        handler_name = source.handler_config.get("name")
+        # handler_params are not passed to get_handler, they are used for handler initialization
+        return handler_registry.get_handler(source.path, handler_name=handler_name)
 
     def register(self, name: str, data: Any):
         """
         Registers a data object with the Hub and persists it if a path is registered.
-        Args:
-            name: The unique name of the data.
-            data: The data to register (DataFrame, dict, list, etc.).
         """
         self._data[name] = data
         logger.debug(f"Data '{name}' registered in memory.")
 
-        # Auto-persist if a path is defined in the registry
         if name in self._registry:
-            source = self._registry[name] # source is now a DataSource object
+            source = self._registry[name]
             path = source.path
-            handler_name = source.handler
-
             path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                handler = handler_registry.get_handler(path, handler_name=handler_name)
+                handler = self._get_handler_instance(source)
                 handler.save(data, path)
                 logger.info(f"Data '{name}' automatically persisted to: {path}")
             except Exception as e:
@@ -100,36 +84,28 @@ class DataHub:
 
     def get(self, name: str) -> Any:
         """
-        Retrieves data from the Hub.
-        If data is not in memory, it's lazy-loaded from the registered file path.
-        Args:
-            name: The name of the data to retrieve.
-        Returns:
-            The requested data (DataFrame, dict, list, etc.).
-        Raises:
-            KeyError: If the data is not found in memory or in the registry.
+        Retrieves data from the Hub, lazy-loading if necessary.
         """
         if name in self._data:
             logger.debug(f"Getting data '{name}' from memory.")
             return self._data[name]
         
         if name in self._registry:
-            source = self._registry[name] # source is now a DataSource object
+            source = self._registry[name]
             path = source.path
-            handler_name = source.handler
+            must_exist = source.handler_config.get("must_exist", True)
 
             logger.info(f"Lazy loading data '{name}' from: {path}...")
             
             try:
-                handler = handler_registry.get_handler(path, handler_name=handler_name)
-
-                # For directories, we don't require them to exist beforehand.
-                # For files, they must exist.
-                if not path.exists() and not handler.handles_directories:
-                    raise FileNotFoundError(f"File for data source '{name}' not found at: {path}")
+                handler = self._get_handler_instance(source)
+                # For directory handlers, we don't check must_exist before calling load
+                # because the handler itself will create the directory if needed
+                if must_exist and not path.exists() and not getattr(handler, 'handles_directories', False):
+                    raise FileNotFoundError(f"Required file for data source '{name}' not found at: {path}")
 
                 data = handler.load(path)
-                self._data[name] = data  # Cache in memory after loading
+                self._data[name] = data
                 return data
             except Exception as e:
                 logger.error(f"Failed to load data '{name}' from {path}: {e}")
@@ -139,47 +115,57 @@ class DataHub:
 
     def get_path(self, name: str) -> Path | None:
         """
-        Gets the registered file path for a data source.
-        If the data source is a directory, ensures the directory exists by calling its handler's load method.
-        Args:
-            name: The name of the data source.
-        Returns:
-            The Path object if it exists, otherwise None.
+        Gets the registered file path for a data source, ensuring existence for handlers.
         """
         if name in self._registry:
             source = self._registry[name]
             path = source.path
-            handler_name = source.handler
-
-            # If it's a directory handler, call its load method to ensure existence
             try:
-                handler = handler_registry.get_handler(path, handler_name=handler_name)
+                handler = self._get_handler_instance(source)
+                # For certain handlers (like DirectoryHandler), load ensures existence.
                 if handler.handles_directories:
                     self.logger.debug(f"Ensuring directory exists for '{name}' at {path} via handler.load().")
-                    handler.load(path) # This will create the directory if it doesn't exist
+                    handler.load(path)
             except Exception as e:
-                self.logger.error(f"Error ensuring directory existence for '{name}' at {path}: {e}")
-                # Decide whether to re-raise or just log. For now, just log and proceed.
-                # The plugin will likely fail later if the directory isn't there.
-                pass # Allow the path to be returned even if directory creation failed.
-
+                self.logger.error(f"Error ensuring path existence for '{name}' at {path}: {e}")
             return path
         return None
 
+    def save(self, data: Any, path: Path, handler_args: dict | None = None):
+        """
+        Saves data to a specified path using the appropriate handler.
+
+        Args:
+            data: The data object to save.
+            path: The destination path (absolute).
+            handler_args: Optional arguments for the handler, including its name.
+        """
+        handler_args = handler_args or {}
+        handler_name = handler_args.get("name")
+
+        self.logger.debug(f"Attempting to save data to {path} using handler '{handler_name or 'auto'}'.")
+        
+        try:
+            handler = handler_registry.get_handler(path, handler_name=handler_name)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # We might need to pass specific save options from handler_args to the save method
+            # For now, we assume the handler's save method has a simple signature.
+            handler.save(data, path)
+            self.logger.info(f"Data successfully saved to: {path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save data to {path}: {e}")
+            raise
+
     def __contains__(self, name: str) -> bool:
-        """Allows using the `in` keyword to check if data exists."""
         return name in self._data or name in self._registry
 
     def summary(self) -> dict:
-        """
-        Returns a summary of the DataHub's current state.
-        """
         return {
             "in_memory_data": list(self._data.keys()),
             "registered_files": {
                 name: {
                     "path": str(source.path),
-                    "handler": source.handler or "default (by extension)"
+                    "handler": source.handler_config
                 } for name, source in self._registry.items()
             }
         }

@@ -1,37 +1,37 @@
 
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from pathlib import Path
-import shutil
 from logging import Logger
+from typing import Annotated
 
-from pydantic import BaseModel, Field
-from typing import Dict, Any
+from pydantic import BaseModel
 
-from nexus.core.data.hub import DataHub
 from nexus.core.plugin.decorator import plugin
+from nexus.core.plugin.typing import DataSource
 
 
 class FrameRendererConfig(BaseModel):
     """Configuration model for the Frame Renderer plugin."""
-    data_sources: Dict[str, Any] = {
-        "video_manifest": {
-            "handler": "csv",
-            "path": "raw_data/video_manifest.csv"
-        },
-        "predicted_states": {
-            "handler": "csv",
-            "path": "intermediate/predicted_states.csv"
-        },
-        "rendered_frames_dir": {
-            "handler": "dir",
-            "path": "intermediate/rendered_frames"
-        }
-    }
-    video_manifest_key: str = "video_manifest"
-    predicted_states_key: str = "predicted_states"
-    rendered_frames_dir_key: str = "rendered_frames_dir"
+    # Needed to allow DataFrame and Path fields
+    model_config = {"arbitrary_types_allowed": True}
+    
+    # --- Data Dependencies ---
+    video_manifest: Annotated[
+        pd.DataFrame,
+        DataSource(path="raw_data/video_manifest.csv")
+    ]
+    predicted_states: Annotated[
+        pd.DataFrame,
+        DataSource(path="results/predicted_states.parquet")
+    ]
+    rendered_frames_dir: Annotated[
+        Path,
+        DataSource(path="intermediate/rendered_frames", handler_args={"name": "dir"})
+    ]
+
+    # --- Algorithm Parameters ---
     zoom_factor: float = 5.0
     circle_radius_px: int = 15
     circle_width_px: int = 3
@@ -42,31 +42,16 @@ class FrameRendererConfig(BaseModel):
     output_key=None,  # This plugin writes files to disk, doesn't return to DataHub
     default_config=FrameRendererConfig
 )
-def render_frames(
-    # Dependencies from DataHub
-    video_manifest: pd.DataFrame,
-    predicted_states: pd.DataFrame,
-    rendered_frames_dir: Path, # <-- Injected by DataHub using DirectoryHandler
-    # Dependencies from Plugin Config
-    config: FrameRendererConfig,
-    # Dependencies from Context
-    logger: Logger,
-    case_path: Path
-) -> None:
+def render_frames(config: FrameRendererConfig, logger: Logger) -> None:
     """
     Renders predicted and ground truth data onto a series of image frames,
     creating a visual representation of the EKF predictions.
     """
-    # --- Prepare Output Directory ---
-    # The directory is now prepared by the DataHub and DirectoryHandler
-    # We just use the Path provided by the dependency injection
-    
-    logger.info(f"Using output directory prepared by DataHub: {rendered_frames_dir}")
-    logger.info(f"Absolute path of rendered_frames_dir: {rendered_frames_dir.absolute()}")
+    logger.info(f"Using output directory: {config.rendered_frames_dir}")
 
     # --- Merge Data ---
-    manifest_df = video_manifest.copy()
-    predictions_df = predicted_states.copy()
+    manifest_df = config.video_manifest.copy()
+    predictions_df = config.predicted_states.copy()
     manifest_df['timestamp'] = pd.to_datetime(manifest_df['timestamp'], unit='s')
     predictions_df['timestamp'] = pd.to_datetime(predictions_df['timestamp'])
     
@@ -97,8 +82,7 @@ def render_frames(
             relative_y = (world_y - cam_world_y) * config.zoom_factor
             return (relative_x + viewport_width / 2, relative_y + viewport_height / 2)
 
-        # --- Draw Grid and Data Points (simplified for brevity, logic is the same) ---
-        # ... (The complex drawing logic would be here) ...
+        # --- Draw Grid and Data Points ---
         radius = config.circle_radius_px
         width = config.circle_width_px
         
@@ -109,11 +93,9 @@ def render_frames(
         draw.ellipse([(px_cam - radius, py_cam - radius), (px_cam + radius, py_cam + radius)], outline='#dc3545', width=width)
 
         # --- Save Frame ---
-        # Assuming image_path in manifest is relative to case_path
         image_filename = Path(row['image_path']).name
-        output_frame_path = rendered_frames_dir / image_filename
+        output_frame_path = config.rendered_frames_dir / image_filename
         
-        logger.info(f"Saving frame to: {output_frame_path}")
         img.save(output_frame_path)
 
-    logger.info(f"Finished rendering frames to {rendered_frames_dir}")
+    logger.info(f"Finished rendering frames to {config.rendered_frames_dir}")
