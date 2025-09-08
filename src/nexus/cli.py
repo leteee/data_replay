@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import shutil
 import sys
+from typing import Optional
 import typer
 
 # Add the src directory to the Python path
@@ -43,9 +44,11 @@ def main(
 @app.command()
 def pipeline(
     case: str = typer.Option(..., "--case", help="Name of the case directory under 'cases/' (e.g., 'demo')"),
+    templates: Optional[str] = typer.Option(None, "--templates", help="Name of the template to use for creating the case (e.g., 'demo')"),
 ):
     """
     Run a full pipeline for a given case.
+    If --templates is specified, create the case from a template before running.
     """
     global_config = load_yaml(project_root / "config" / "global.yaml")
     cases_root_str = global_config.get("cases_root", "cases")
@@ -55,6 +58,21 @@ def pipeline(
 
     case_arg_path = Path(case)
     case_path = case_arg_path if case_arg_path.is_absolute() else cases_root / case_arg_path
+
+    # If templates option is specified, create the case from template
+    if templates:
+        template_path = project_root / "templates" / f"{templates}_case.yaml"
+        if not template_path.exists():
+            logger.error(f"Template file not found: {template_path}")
+            raise typer.Exit(code=1)
+        
+        # Create case directory if it doesn't exist
+        case_path.mkdir(parents=True, exist_ok=True)
+        
+        # Copy template to case directory
+        destination_path = case_path / "case.yaml"
+        shutil.copy2(template_path, destination_path)
+        logger.info(f"Created case '{case}' from template '{templates}' at {destination_path}")
 
     if not case_path.is_dir():
         logger.error(f"Case path not found: {case_path}")
