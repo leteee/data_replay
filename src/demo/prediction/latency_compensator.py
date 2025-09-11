@@ -21,14 +21,14 @@ class LatencyCompensatorConfig(BaseModel):
     # Input: The framework will discover this, load the CSV, and inject a DataFrame.
     measurements: Annotated[
         pd.DataFrame,
-        DataSource(path="raw_data/latent_measurements.csv")
+        DataSource(name="latent_measurements")
     ]
 
     # Output: The framework will take the returned DataFrame and save it to this path.
     # This is marked as Optional because it's not an input; the framework handles it post-execution.
     predicted_states: Optional[Annotated[
         pd.DataFrame,
-        DataSink(path="results/predicted_states.parquet")
+        DataSink(name="predicted_states")
     ]] = None
 
     # --- Algorithm Parameters ---

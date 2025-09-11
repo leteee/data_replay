@@ -10,6 +10,12 @@ from logging import Logger
 from pydantic import BaseModel
 
 from .handlers import handler_registry
+from ..exceptions import (
+    DataSourceException,
+    DataSinkException,
+    DataHandlerException
+)
+from ..exception_handler import handle_exception
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +67,7 @@ class DataHub:
     def _get_handler_instance(self, source: DataSource):
         """Instantiates a handler based on the source configuration."""
         handler_name = source.handler_config.get("name")
+        self.logger.debug(f"Getting handler for path: {source.path}, handler_name: {handler_name}, handler_config: {source.handler_config}")
         # handler_params are not passed to get_handler, they are used for handler initialization
         return handler_registry.get_handler(source.path, handler_name=handler_name)
 
@@ -108,8 +115,18 @@ class DataHub:
                 self._data[name] = data
                 return data
             except Exception as e:
-                logger.error(f"Failed to load data '{name}' from {path}: {e}")
-                raise
+                error_context = {
+                    "data_source_name": name,
+                    "path": str(path),
+                    "must_exist": must_exist
+                }
+                exc = DataSourceException(
+                    f"Failed to load data '{name}' from {path}: {e}",
+                    context=error_context,
+                    cause=e
+                )
+                handle_exception(exc, error_context)
+                raise exc
             
         raise KeyError(f"Data '{name}' not found in DataHub.")
 
@@ -153,8 +170,17 @@ class DataHub:
             handler.save(data, path)
             self.logger.info(f"Data successfully saved to: {path}")
         except Exception as e:
-            self.logger.error(f"Failed to save data to {path}: {e}")
-            raise
+            error_context = {
+                "path": str(path),
+                "handler_name": handler_name
+            }
+            exc = DataSinkException(
+                f"Failed to save data to {path}: {e}",
+                context=error_context,
+                cause=e
+            )
+            handle_exception(exc, error_context)
+            raise exc
 
     def __contains__(self, name: str) -> bool:
         return name in self._data or name in self._registry

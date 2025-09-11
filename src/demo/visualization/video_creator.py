@@ -18,11 +18,11 @@ class VideoCreatorConfig(BaseModel):
     # --- Data Dependencies ---
     rendered_frames_dir: Annotated[
         Path,
-        DataSource(path="intermediate/rendered_frames", handler_args={"name": "dir"})
+        DataSource(name="rendered_frames", handler_args={"name": "dir"})
     ]
     replay_video: Optional[Annotated[
         Path,
-        DataSink(path="output/replay_video.mp4", handler_args={"name": "file", "must_exist": True})
+        DataSink(name="replay_video", handler_args={"name": "file", "must_exist": True})
     ]] = None
 
     # --- Algorithm Parameters ---

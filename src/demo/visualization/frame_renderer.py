@@ -20,15 +20,15 @@ class FrameRendererConfig(BaseModel):
     # --- Data Dependencies ---
     video_manifest: Annotated[
         pd.DataFrame,
-        DataSource(path="raw_data/video_manifest.csv")
+        DataSource(name="video_manifest")
     ]
     predicted_states: Annotated[
         pd.DataFrame,
-        DataSource(path="results/predicted_states.parquet")
+        DataSource(name="predicted_states")
     ]
     rendered_frames_dir: Annotated[
         Path,
-        DataSource(path="intermediate/rendered_frames", handler_args={"name": "dir"})
+        DataSource(name="rendered_frames", handler_args={"name": "dir"})
     ]
 
     # --- Algorithm Parameters ---

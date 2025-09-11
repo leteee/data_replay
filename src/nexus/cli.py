@@ -22,10 +22,16 @@ from nexus.core.logger import initialize_logging
 from nexus.core.plugin.decorator import PLUGIN_REGISTRY
 from nexus.core.plugin.discovery import discover_plugins
 from nexus.core.plugin.executor import PluginExecutor
-
-logger = logging.getLogger(__name__)
+from nexus.core.exceptions import (
+    BaseFrameworkException,
+    PluginExecutionException,
+    PluginNotFoundException
+)
+from nexus.core.exception_handler import handle_exception
 
 app = typer.Typer(help="Data Replay Framework CLI")
+
+logger = logging.getLogger(__name__)
 
 def version_callback(value: bool):
     if value:
@@ -100,8 +106,20 @@ def pipeline(
         runner = PipelineRunner(nexus_context)
         runner.run()
         logger.info(f"====== Case '{case_path.name}' finished successfully. ======")
+    except BaseFrameworkException as e:
+        handle_exception(e)
+        raise typer.Exit(code=1)
     except Exception as e:
-        logger.critical(f"A critical error occurred during pipeline execution: {e}", exc_info=True)
+        error_context = {
+            "command": "pipeline",
+            "case_path": str(case_path)
+        }
+        exc = PluginExecutionException(
+            f"A critical error occurred during pipeline execution: {e}",
+            context=error_context,
+            cause=e
+        )
+        handle_exception(exc, error_context)
         raise typer.Exit(code=1)
 
 @app.command()
@@ -126,28 +144,15 @@ def plugin(
         logger.error(f"Case path not found: {case_path}")
         raise typer.Exit(code=1)
 
-    logger.info(f"====== Running Plugin: {name} ======")
+    logger.info(f"====== Running Plugin: {name} in Case: {case_path.name} ======")
 
-    # Discover plugins
-    plugin_modules = global_config.get("plugin_modules", [])
-    discover_plugins(plugin_modules, logger)
-    
-    # Check if plugin exists
-    if name not in PLUGIN_REGISTRY:
-        logger.error(f"Plugin '{name}' not found.")
-        raise typer.Exit(code=1)
-    
-    plugin_spec = PLUGIN_REGISTRY[name]
-    
-    # Create DataHub and context
     data_hub = DataHub(case_path=case_path, logger=logger)
     
     run_config = {
         "cli_args": {},
-        "plugin_modules": plugin_modules
+        "plugin_modules": global_config.get("plugin_modules", [])
     }
-    
-    # Create a minimal PipelineRunner to handle configuration setup for single plugin
+
     nexus_context = NexusContext(
         project_root=project_root,
         cases_root=cases_root,
@@ -156,110 +161,26 @@ def plugin(
         logger=logger,
         run_config=run_config
     )
-    
-    # Create a PipelineRunner to handle configuration discovery and data loading
-    runner = PipelineRunner(nexus_context)
-    
-    # Get case config
-    case_config = load_yaml(case_path / "case.yaml")
-    pipeline_steps = case_config.get("pipeline", [])
-    
-    # Find the plugin config in the pipeline
-    plugin_config = {}
-    for step in pipeline_steps:
-        if step.get("plugin") == name:
-            plugin_config = step.get("config", {})
-            break
-    
+
     try:
-        # Handle plugin execution
-        if not plugin_spec.config_model:
-            logger.debug(f"Plugin {name} has no config model. Executing directly.")
-            from nexus.core.context import PluginContext
-            plugin_context = PluginContext(
-                data_hub=data_hub,
-                logger=logger,
-                project_root=project_root,
-                case_path=case_path,
-                config=None
-            )
-            executor = PluginExecutor(plugin_spec, plugin_context)
-            executor.execute()
-        else:
-            # For plugins with config models, we need to set up configuration like in full pipeline
-            # 1. Discover IO declarations for this single plugin
-            single_plugin_pipeline = [{"plugin": name, "enable": True}]
-            discovered_sources, plugin_sources, plugin_sinks = runner._discover_io_declarations(single_plugin_pipeline)
-            
-            # 2. Config Merging for single plugin
-            config_manager = ConfigManager(
-                global_config=global_config, case_config=case_config,
-                plugin_registry=PLUGIN_REGISTRY, discovered_data_sources=discovered_sources,
-                case_path=case_path, project_root=project_root,
-                cli_args=run_config.get('cli_args', {})
-            )
-            
-            # 3. Data Loading
-            final_data_sources = config_manager.get_data_sources()
-            data_hub.add_data_sources(final_data_sources)
-            logger.debug(f"DataHub initialized with {len(final_data_sources)} merged data sources.")
-            
-            # 4. Get Raw Config & Hydrate for single plugin
-            config_dict = config_manager.get_plugin_config(
-                plugin_name=name, case_plugin_config=plugin_config
-            )
-            
-            hydrated_dict = config_dict.copy()
-            sources_for_plugin = plugin_sources.get(name, {})
-            for field_name, source_marker in sources_for_plugin.items():
-                # The alias used here must match the one used in discovery
-                alias = getattr(source_marker, 'alias', source_marker.path)
-                logger.debug(f"Hydrating field '{field_name}' with data source '{alias}'.")
-                hydrated_dict[field_name] = data_hub.get(alias)
-            
-            # 5. Validate and Instantiate Pydantic Model
-            try:
-                config_object = plugin_spec.config_model(**hydrated_dict)
-                logger.debug(f"Successfully created config object for {name}")
-            except Exception as e:
-                logger.error(f"Configuration validation failed for plugin '{name}': {e}")
-                raise
-            
-            # 6. Execute Plugin
-            from nexus.core.context import PluginContext
-            plugin_context = PluginContext(
-                data_hub=data_hub,
-                logger=logger,
-                project_root=project_root,
-                case_path=case_path,
-                config=config_object
-            )
-            
-            executor = PluginExecutor(plugin_spec, plugin_context)
-            return_value = executor.execute()
-            
-            # 7. Handle Output (simplified)
-            sinks_for_plugin = plugin_sinks.get(name, {})
-            if sinks_for_plugin and return_value is not None:
-                # Get the first (and only) sink
-                sink_field, sink_marker = list(sinks_for_plugin.items())[0]
-                logger.info(f"Plugin '{name}' produced output. Writing to sink: {sink_marker.path}")
-                try:
-                    # We need to resolve the path relative to the case directory
-                    output_path = case_path / sink_marker.path
-                    data_hub.save(
-                        data=return_value,
-                        path=output_path,
-                        handler_args=sink_marker.handler_args
-                    )
-                    logger.debug(f"Successfully wrote output to {output_path}")
-                except Exception as e:
-                    logger.error(f"Failed to write output for plugin '{name}' to {sink_marker.path}: {e}", exc_info=True)
-                    raise
-                
+        runner = PipelineRunner(nexus_context)
+        runner.run(plugin_name=name)
         logger.info(f"====== Plugin '{name}' finished successfully. ======")
+    except BaseFrameworkException as e:
+        handle_exception(e)
+        raise typer.Exit(code=1)
     except Exception as e:
-        logger.critical(f"A critical error occurred during plugin execution: {e}", exc_info=True)
+        error_context = {
+            "command": "plugin",
+            "plugin_name": name,
+            "case_path": str(case_path)
+        }
+        exc = PluginExecutionException(
+            f"A critical error occurred during plugin execution: {e}",
+            context=error_context,
+            cause=e
+        )
+        handle_exception(exc, error_context)
         raise typer.Exit(code=1)
 
 @app.command(name="generate-data")
@@ -271,8 +192,19 @@ def generate_data_cmd():
     try:
         generate_data()
         logger.info("Successfully generated demo data.")
+    except BaseFrameworkException as e:
+        handle_exception(e)
+        raise typer.Exit(code=1)
     except Exception as e:
-        logger.error(f"An error occurred during data generation: {e}", exc_info=True)
+        error_context = {
+            "command": "generate-data"
+        }
+        exc = BaseFrameworkException(
+            f"An error occurred during data generation: {e}",
+            context=error_context,
+            cause=e
+        )
+        handle_exception(exc, error_context)
         raise typer.Exit(code=1)
 
 @app.command()
@@ -284,8 +216,19 @@ def docs():
     try:
         generate_plugin_documentation()
         logger.info("Successfully generated framework documentation.")
+    except BaseFrameworkException as e:
+        handle_exception(e)
+        raise typer.Exit(code=1)
     except Exception as e:
-        logger.error(f"An error occurred during doc generation: {e}", exc_info=True)
+        error_context = {
+            "command": "docs"
+        }
+        exc = BaseFrameworkException(
+            f"An error occurred during doc generation: {e}",
+            context=error_context,
+            cause=e
+        )
+        handle_exception(exc, error_context)
         raise typer.Exit(code=1)
 
 if __name__ == "__main__":

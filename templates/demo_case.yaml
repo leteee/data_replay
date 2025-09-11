@@ -2,64 +2,66 @@ case_name: latency_compensated_replay
 description: "A demo case for replaying latent vehicle data with prediction and visualization."
 
 # ==============================================================================
-# Data Sources
+# I/O Mapping
 # ------------------------------------------------------------------------------
-# This section is now commented out to demonstrate that the framework can
-# fall back to the default configuration defined within each plugin.
+# This section maps logical I/O names used by plugins to physical file paths.
+# This allows the same plugin to be reused across different cases by simply
+# re-wiring its inputs and outputs here.
 # ==============================================================================
-# data_sources:
-#   video_manifest:
-#     path: "raw_data/video_manifest.csv"
-#   latent_measurements:
-#     path: "raw_data/latent_measurements.csv"
-#   predicted_states:
-#     path: "intermediate/predicted_states.csv"
-#   raw_video_file:
-#     path: "raw_data/video.mp4"
-#     handler: nexus.core.handlers.file.FileHandler
-#   rendered_frames_dir:
-#     path: "intermediate/rendered_frames"
-#     handler: dir
-#   replay_video:
-#     path: "output/replay_video.mp4"
-#     handler: FileHandler
+io_mapping:
+  # --- For LatencyCompensator ---
+  latent_measurements:
+    path: "raw_data/latent_measurements.csv"
+    handler: "csv"
+  predicted_states:
+    path: "intermediate/predicted_states.parquet"
+    handler: "parquet"
+
+  # --- For FrameRenderer ---
+  video_manifest:
+    path: "raw_data/video_manifest.csv"
+    handler: "csv"
+  # FrameRenderer's output is the input for VideoCreator
+  rendered_frames:
+    path: "intermediate/rendered_frames"
+    handler: "dir" # Assuming a 'dir' handler that provides the path
+
+  # --- For VideoCreator ---
+  replay_video:
+    path: "output/replay_video.mp4"
+    # The handler can be inferred from the extension, or specified explicitly.
+    # For video, a special handler would be needed if we were to 'load' it,
+    # but for saving, the plugin handles it directly. The framework just
+    # needs the path.
 
 # ==============================================================================
 # Pipeline Configuration
 # ------------------------------------------------------------------------------
-# The inputs and outputs for each plugin are commented out. The pipeline will
-# now rely on the default I/O configuration specified in each plugin's own
-# .yaml file (e.g., latency_compensator.yaml).
+# The `config` section for each plugin now only contains pure algorithm
+# parameters. All I/O declarations are gone from here and live in the code
+# as `DataSource`/`DataSink` annotations, wired up by `io_mapping`.
 # ==============================================================================
 pipeline:
-  
-
-  # ----------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
   # Plugin 2: LatencyCompensator
-  # ----------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
   - plugin: "Latency Compensator"
-    # enable: true
+    enable: true
     config:
-      # inputs: ["latent_measurements"]
-      # outputs: ["predicted_states"]
       latency_to_compensate_s: 0.2
 
-  # ----------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
   # Plugin 3: FrameRenderer
-  # ----------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
   - plugin: "Frame Renderer"
-    # enable: true
+    enable: true
     config:
-      # inputs: ["video_manifest", "predicted_states"]
-      # output_dir: "intermediate/rendered_frames"
       zoom_factor: 5
 
-  # ----------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
   # Plugin 4: VideoCreator
-  # ----------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
   - plugin: "Video Creator"
-    # enable: true
+    enable: true
     config:
-      # inputs: ["rendered_frames_dir"]
-      # outputs: ["replay_video"]
       fps: 50

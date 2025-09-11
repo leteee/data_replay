@@ -15,12 +15,13 @@ class DataSource:
     source (e.g., a file) by the `DataHub`.
 
     Attributes:
-        path: The relative or absolute path to the data source.
+        name: The logical name of the data source, used to look up the actual
+              path and handler in the case configuration's `io_mapping` section.
         handler_args: A dictionary of optional arguments to be passed to the
                       corresponding data handler.
     """
-    def __init__(self, path: str, handler_args: dict[str, Any] | None = None):
-        self.path = path
+    def __init__(self, name: str, handler_args: dict[str, Any] | None = None):
+        self.name = name
         self.handler_args = handler_args or {}
 
 class DataSink:
@@ -32,10 +33,11 @@ class DataSink:
     destination specified by this sink.
 
     Attributes:
-        path: The relative or absolute path to the data destination.
+        name: The logical name of the data sink, used to look up the actual
+              path and handler in the case configuration's `io_mapping` section.
         handler_args: A dictionary of optional arguments to be passed to the
                       corresponding data handler for writing.
     """
-    def __init__(self, path: str, handler_args: dict[str, Any] | None = None):
-        self.path = path
+    def __init__(self, name: str, handler_args: dict[str, Any] | None = None):
+        self.name = name
         self.handler_args = handler_args or {}

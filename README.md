@@ -110,7 +110,7 @@ This will automatically generate necessary demo data and clean up the environmen
 
 ### Declarative I/O with DataSource and DataSink
 
-The framework uses a declarative approach for input and output management through `DataSource` and `DataSink` annotations in plugin configuration models.
+The framework uses a declarative approach for input and output management through `DataSource` and `DataSink` annotations in plugin configuration models. These annotations use logical names instead of physical paths, allowing the same plugin to be reused across different cases by simply re-wiring its inputs and outputs in the `case.yaml` file.
 
 ```python
 from pydantic import BaseModel
@@ -123,14 +123,14 @@ class MyPluginConfig(BaseModel):
     # Input: The framework will discover this, load the CSV, and inject a DataFrame.
     measurements: Annotated[
         pd.DataFrame,
-        DataSource(path="raw_data/latent_measurements.csv")
+        DataSource(name="latent_measurements")
     ]
 
     # Output: The framework will take the returned DataFrame and save it to this path.
     # This is marked as Optional because it's not an input; the framework handles it post-execution.
     predicted_states: Optional[Annotated[
         pd.DataFrame,
-        DataSink(path="results/predicted_states.parquet")
+        DataSink(name="predicted_states")
     ]] = None
 
     # Algorithm Parameters
@@ -141,11 +141,29 @@ class MyPluginConfig(BaseModel):
 
 This file is the heart of a pipeline run. It defines two key sections:
 
-- **`data_sources`**: A catalog of all data "nouns" in the pipeline. It maps a logical name (e.g., `predicted_states`) to a physical path and an optional handler, allowing the framework to manage I/O.
+- **`io_mapping`**: A mapping of logical I/O names used by plugins to physical file paths and handlers. This allows the same plugin to be reused across different cases by simply re-wiring its inputs and outputs here.
 - **`pipeline`**: A list of the plugins (the "verbs") to execute in sequence. You can enable/disable plugins and override their default parameters here.
 
 *Example snippet from `cases/demo/case.yaml`.*
 ```yaml
+io_mapping:
+  # --- For LatencyCompensator ---
+  latent_measurements:
+    path: "raw_data/latent_measurements.csv"
+    handler: "csv"
+  predicted_states:
+    path: "intermediate/predicted_states.parquet"
+    handler: "parquet"
+
+  # --- For FrameRenderer ---
+  video_manifest:
+    path: "raw_data/video_manifest.csv"
+    handler: "csv"
+  # FrameRenderer's output is the input for VideoCreator
+  rendered_frames:
+    path: "intermediate/rendered_frames"
+    handler: "dir" # Assuming a 'dir' handler that provides the path
+
 pipeline:
   # The first plugin in the demo compensates for latency.
   - plugin: "Latency Compensator"
@@ -156,6 +174,27 @@ pipeline:
   - plugin: "Frame Renderer"
     config:
       zoom_factor: 5
+```
+
+### Exception Handling
+
+The framework implements a comprehensive exception handling system with a well-defined exception hierarchy. This system provides structured error reporting and contextual information to aid in debugging and troubleshooting.
+
+Key features of the exception handling system:
+
+1. **Structured Exception Hierarchy**: Custom exceptions are organized in a logical hierarchy, making it easy to catch and handle specific types of errors.
+2. **Contextual Information**: All exceptions include contextual information such as timestamps, related resources, and operation details.
+3. **Global Exception Handler**: A centralized exception handler provides consistent error reporting across the framework.
+4. **Detailed Logging**: Exceptions are automatically logged with appropriate severity levels and detailed information.
+
+Example exception hierarchy:
+```
+BaseFrameworkException
+├── ConfigurationException
+├── DataException
+├── PluginException
+├── ValidationException
+└── FrameworkException
 ```
 
 ### Plugins (`@plugin`)
@@ -198,10 +237,10 @@ The framework follows a plugin-based architecture with automatic dependency inje
 
 1. **PipelineRunner**: The core engine that orchestrates the entire run in a multi-stage process:
     - **Dependency Discovery**: Pre-scans active plugins to discover all `DataSource` and `DataSink` declarations.
-    - **Configuration & Data Loading**: Merges all configuration layers and loads all required data specified by `DataSource` annotations.
+    - **Configuration & Data Loading**: Merges all configuration layers and loads all required data specified by `DataSource` annotations. The `io_mapping` section in `case.yaml` is used to resolve logical names to physical paths and handlers.
     - **Configuration Hydration**: Replaces any `DataSource` annotated fields with the actual data loaded from the `DataHub`.
     - **Execution**: Passes the fully "hydrated" and type-safe config object to the `PluginExecutor` for execution.
-    - **Result Handling**: After the plugin executes, writes the plugin's return value to the destination specified by the `DataSink`.
+    - **Result Handling**: After the plugin executes, writes the plugin's return value to the destination specified by the `DataSink`. The `io_mapping` section in `case.yaml` is used to resolve logical names to physical paths and handlers.
 
 2. **PluginExecutor**: Receives a fully prepared `PluginContext`, executes the plugin function, and returns the result.
 
@@ -272,7 +311,7 @@ def run(self) -> None:
 
     # --- 1a. Dependency Discovery Phase ---
     # Discover all DataSource and DataSink declarations from plugins
-    discovered_sources, plugin_sources, plugin_sinks = self._discover_io_declarations(pipeline_steps)
+    discovered_sources, plugin_sources, plugin_sinks = self._discover_io_declarations(pipeline_steps, case_config)
 
     # --- 1b. Config Merging ---
     # Create ConfigManager to handle configuration hierarchy
@@ -303,10 +342,10 @@ def run(self) -> None:
         hydrated_dict = config_dict.copy()
         sources_for_plugin = plugin_sources.get(plugin_name, {})
         for field_name, source_marker in sources_for_plugin.items():
-            # The alias used here must match the one used in discovery
-            alias = getattr(source_marker, 'alias', source_marker.path)
-            self._logger.debug(f"Hydrating field '{field_name}' with data source '{alias}'.")
-            hydrated_dict[field_name] = self._context.data_hub.get(alias)  # Lazy loading happens here
+            # The name used here must match the one used in discovery
+            name = source_marker.name
+            self._logger.debug(f"Hydrating field '{field_name}' with data source '{name}'.")
+            hydrated_dict[field_name] = self._context.data_hub.get(name)  # Lazy loading happens here
 
         # --- 2b. Validate and Instantiate Pydantic Model ---
         try:
@@ -344,14 +383,19 @@ def run(self) -> None:
             self._logger.warning(f"Plugin '{plugin_name}' has a DataSink for field '{sink_field}' but returned None.")
             continue
 
-        self._logger.info(f"Plugin '{plugin_name}' produced output. Writing to sink: {sink_marker.path}")
+        self._logger.info(f"Plugin '{plugin_name}' produced output. Writing to sink: {sink_marker.name}")
         try:
             # We need to resolve the path relative to the case directory
-            output_path = self._context.case_path / sink_marker.path
+            # Get the io_mapping from case_config
+            io_mapping = case_config.get("io_mapping", {})
+            sink_config = io_mapping.get(sink_marker.name, {})
+            output_path_str = sink_config.get("path", "")
+            output_path = self._context.case_path / output_path_str
+            handler_args = sink_config.get("handler_args", sink_marker.handler_args)
             self._context.data_hub.save(
                 data=return_value,
                 path=output_path,
-                handler_args=sink_marker.handler_args
+                handler_args=handler_args
             )
             self._logger.debug(f"Successfully wrote output to {output_path}")
         except Exception as e:
@@ -366,10 +410,13 @@ def run(self) -> None:
 The `_discover_io_declarations` method scans plugins for DataSource and DataSink annotations:
 
 ```python
-def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
+def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]], case_config: dict) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
     base_data_sources = {}
     plugin_sources = {}
     plugin_sinks = {}
+
+    # Get io_mapping from case_config
+    io_mapping = case_config.get("io_mapping", {})
 
     for step_config in pipeline_steps:
         plugin_name = step_config.get("plugin")
@@ -407,12 +454,26 @@ def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]]) -> Tup
 
             for item in field_metadata:
                 if isinstance(item, DataSource):
-                    # For ConfigManager (alias -> path/handler mapping)
-                    # Note: We need a unique alias. For now, let's use the path as a key if no alias is defined.
-                    alias = getattr(item, 'alias', item.path)
-                    if alias in base_data_sources:
-                        self._logger.warning(f"Data source alias '{alias}' is declared by multiple plugins.")
-                    base_data_sources[alias] = {"path": item.path, "handler_args": item.handler_args}
+                    # For ConfigManager (name -> path/handler mapping)
+                    # Note: We need a unique name. For now, let's use the name attribute.
+                    name = item.name
+                    if name in base_data_sources:
+                        self._logger.warning(f"Data source name '{name}' is declared by multiple plugins.")
+                    
+                    # Get path and handler from io_mapping
+                    source_config = io_mapping.get(name, {})
+                    path = source_config.get("path", "")
+                    handler = source_config.get("handler", "")
+                    
+                    # Build handler_args
+                    handler_args = item.handler_args.copy() if item.handler_args else {}
+                    if handler:
+                        handler_args["name"] = handler
+                    
+                    base_data_sources[name] = {
+                        "path": path,
+                        "handler_args": handler_args
+                    }
                     # For runner (plugin -> field -> DataSource mapping)
                     plugin_sources[plugin_name][field_name] = item
 
@@ -539,7 +600,7 @@ sequenceDiagram
         
         Note over R: 4. Data Hydration
         loop For each DataSource field
-            R->>H: data_hub.get(alias)
+            R->>H: data_hub.get(name)
             H->>DH: handler.load(path)
             DH-->>H: data
             H-->>R: data
@@ -558,6 +619,13 @@ sequenceDiagram
             R->>H: data_hub.save(data, path, handler_args)
             H->>DH: handler.save(data, path)
         end
+    end
+    
+    Note over R,C: Exception Handling
+    opt On Exception
+        R->>C: handle_exception(exc)
+        C->>C: Log error with context
+        C->>C: Exit with error code
     end
     
     R-->>C: Pipeline finished

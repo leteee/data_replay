@@ -12,6 +12,13 @@ from .plugin.executor import PluginExecutor
 from .plugin.decorator import PLUGIN_REGISTRY
 from .plugin.discovery import discover_plugins
 from .plugin.typing import DataSource, DataSink
+from .exceptions import (
+    PluginExecutionException,
+    PluginConfigurationException,
+    DataException,
+    DataSourceException
+)
+from .exception_handler import handle_exception
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +37,7 @@ class PipelineRunner:
             self._logger.warning("No 'plugin_modules' defined in config. No plugins will be loaded.")
         discover_plugins(plugin_modules, self._logger)
 
-    def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
+    def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]], case_config: dict) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
         """
         Pre-scans active plugins to discover DataSource and DataSink declarations.
 
@@ -43,6 +50,10 @@ class PipelineRunner:
         base_data_sources = {}
         plugin_sources = {}
         plugin_sinks = {}
+
+        # Get io_mapping from case_config
+        io_mapping = case_config.get("io_mapping", {})
+        self._logger.debug(f"io_mapping: {io_mapping}")
 
         for step_config in pipeline_steps:
             plugin_name = step_config.get("plugin")
@@ -81,12 +92,31 @@ class PipelineRunner:
 
                 for item in field_metadata:
                     if isinstance(item, DataSource):
-                        # For ConfigManager (alias -> path/handler mapping)
-                        # Note: We need a unique alias. For now, let's use the path as a key if no alias is defined.
-                        alias = getattr(item, 'alias', item.path)
-                        if alias in base_data_sources:
-                            self._logger.warning(f"Data source alias '{alias}' is declared by multiple plugins.")
-                        base_data_sources[alias] = {"path": item.path, "handler_args": item.handler_args}
+                        # For ConfigManager (name -> path/handler mapping)
+                        # Note: We need a unique name. For now, let's use the name attribute.
+                        name = item.name
+                        self._logger.debug(f"Found DataSource with name: {name}")
+                        if name in base_data_sources:
+                            self._logger.warning(f"Data source name '{name}' is declared by multiple plugins.")
+                        
+                        # Get path and handler from io_mapping
+                        source_config = io_mapping.get(name, {})
+                        self._logger.debug(f"Source config for '{name}': {source_config}")
+                        path = source_config.get("path", "")
+                        handler = source_config.get("handler", "")
+                        self._logger.debug(f"Path for '{name}': {path}")
+                        self._logger.debug(f"Handler for '{name}': {handler}")
+                        
+                        # Build handler_args
+                        handler_args = item.handler_args.copy() if item.handler_args else {}
+                        if handler:
+                            handler_args["name"] = handler
+                        
+                        base_data_sources[name] = {
+                            "path": path,
+                            "handler_args": handler_args
+                        }
+                        self._logger.debug(f"Added to base_data_sources: {name} -> {base_data_sources[name]}")
                         # For runner (plugin -> field -> DataSource mapping)
                         plugin_sources[plugin_name][field_name] = item
 
@@ -97,21 +127,31 @@ class PipelineRunner:
             self._logger.info(f"Discovered {len(base_data_sources)} data sources from plugin configs.")
         return base_data_sources, plugin_sources, plugin_sinks
 
-    def run(self) -> None:
-        self._logger.info(f"Pipeline run starting for case: {self._context.case_path.name}")
+    def run(self, plugin_name: str | None = None) -> None:
+        if plugin_name:
+            self._logger.info(f"Single plugin run starting for '{plugin_name}' in case: {self._context.case_path.name}")
+        else:
+            self._logger.info(f"Pipeline run starting for case: {self._context.case_path.name}")
 
         # --- 1. Configuration Setup Phase ---
         global_config_path = self._context.project_root / "config" / "global.yaml"
         global_config = load_yaml(global_config_path)
         case_config = load_yaml(self._context.case_path / "case.yaml")
+        self._logger.debug(f"case_config: {case_config}")
+        
         pipeline_steps = case_config.get("pipeline", [])
+        if plugin_name:
+            pipeline_steps = [step for step in pipeline_steps if step.get("plugin") == plugin_name]
+            if not pipeline_steps:
+                self._logger.error(f"Plugin '{plugin_name}' not found in the case configuration.")
+                return
 
         if not pipeline_steps:
             self._logger.warning("Pipeline is empty. Nothing to run.")
             return
 
         # --- 1a. Dependency Discovery Phase ---
-        discovered_sources, plugin_sources, plugin_sinks = self._discover_io_declarations(pipeline_steps)
+        discovered_sources, plugin_sources, plugin_sinks = self._discover_io_declarations(pipeline_steps, case_config)
 
         # --- 1b. Config Merging ---
         config_manager = ConfigManager(
@@ -128,16 +168,16 @@ class PipelineRunner:
 
         # --- 2. Execution Phase ---
         for step_config in pipeline_steps:
-            plugin_name = step_config.get("plugin")
-            if not plugin_name or plugin_name not in PLUGIN_REGISTRY or not step_config.get("enable", True):
+            p_name = step_config.get("plugin")
+            if not p_name or p_name not in PLUGIN_REGISTRY or not step_config.get("enable", True):
                 continue
 
-            self._logger.debug(f"Preparing plugin: {plugin_name}")
-            plugin_spec = PLUGIN_REGISTRY[plugin_name]
+            self._logger.debug(f"Preparing plugin: {p_name}")
+            plugin_spec = PLUGIN_REGISTRY[p_name]
             case_plugin_params = step_config.get("params", {})
 
             if not plugin_spec.config_model:
-                self._logger.debug(f"Plugin {plugin_name} has no config model. Executing directly.")
+                self._logger.debug(f"Plugin {p_name} has no config model. Executing directly.")
                 # Execute plugin with no config
                 plugin_context = PluginContext(data_hub=self._context.data_hub, logger=self._context.logger, project_root=self._context.project_root, case_path=self._context.case_path, config=None)
                 executor = PluginExecutor(plugin_spec, plugin_context)
@@ -146,24 +186,33 @@ class PipelineRunner:
 
             # --- 2a. Get Raw Config & Hydrate ---
             config_dict = config_manager.get_plugin_config(
-                plugin_name=plugin_name, case_plugin_config=case_plugin_params
+                plugin_name=p_name, case_plugin_config=case_plugin_params
             )
 
             hydrated_dict = config_dict.copy()
-            sources_for_plugin = plugin_sources.get(plugin_name, {})
+            sources_for_plugin = plugin_sources.get(p_name, {})
             for field_name, source_marker in sources_for_plugin.items():
-                # The alias used here must match the one used in discovery
-                alias = getattr(source_marker, 'alias', source_marker.path)
-                self._logger.debug(f"Hydrating field '{field_name}' with data source '{alias}'.")
-                hydrated_dict[field_name] = self._context.data_hub.get(alias)
+                # The name used here must match the one used in discovery
+                name = source_marker.name
+                self._logger.debug(f"Hydrating field '{field_name}' with data source '{name}'.")
+                hydrated_dict[field_name] = self._context.data_hub.get(name)
 
             # --- 2b. Validate and Instantiate Pydantic Model ---
             try:
                 config_object = plugin_spec.config_model(**hydrated_dict)
-                self._logger.debug(f"Successfully created config object for {plugin_name}")
+                self._logger.debug(f"Successfully created config object for {p_name}")
             except Exception as e:
-                self._logger.error(f"Configuration validation failed for plugin '{plugin_name}': {e}")
-                raise
+                error_context = {
+                    "plugin_name": p_name,
+                    "config_model": plugin_spec.config_model.__name__ if plugin_spec.config_model else "None"
+                }
+                exc = PluginConfigurationException(
+                    f"Configuration validation failed for plugin '{p_name}': {e}",
+                    context=error_context,
+                    cause=e
+                )
+                handle_exception(exc, error_context)
+                raise exc
 
             # --- 2c. Execute Plugin ---
             plugin_context = PluginContext(
@@ -175,39 +224,63 @@ class PipelineRunner:
             try:
                 executor = PluginExecutor(plugin_spec, plugin_context)
                 return_value = executor.execute()
-            except Exception:
-                self._logger.critical(f"A critical error occurred in plugin '{plugin_name}'. Halting pipeline.", exc_info=True)
-                raise
+            except Exception as e:
+                error_context = {
+                    "plugin_name": p_name,
+                    "plugin_spec": plugin_spec.name if plugin_spec else "Unknown"
+                }
+                exc = PluginExecutionException(
+                    f"A critical error occurred in plugin '{p_name}'. Halting pipeline.",
+                    context=error_context,
+                    cause=e
+                )
+                handle_exception(exc, error_context)
+                raise exc
 
             # --- 2d. Handle Output ---
-            sinks_for_plugin = plugin_sinks.get(plugin_name, {})
+            sinks_for_plugin = plugin_sinks.get(p_name, {})
             if not sinks_for_plugin:
                 if return_value is not None:
-                    self._logger.debug(f"Plugin '{plugin_name}' returned a value but has no DataSink declared.")
+                    self._logger.debug(f"Plugin '{p_name}' returned a value but has no DataSink declared.")
                 continue
 
             if len(sinks_for_plugin) > 1:
-                self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks defined. Only one is supported per plugin. Using the first one found.")
+                self._logger.warning(f"Plugin '{p_name}' has multiple DataSinks defined. Only one is supported per plugin. Using the first one found.")
 
             # Get the first (and only) sink
             sink_field, sink_marker = list(sinks_for_plugin.items())[0]
 
             if return_value is None:
-                self._logger.warning(f"Plugin '{plugin_name}' has a DataSink for field '{sink_field}' but returned None.")
+                self._logger.warning(f"Plugin '{p_name}' has a DataSink for field '{sink_field}' but returned None.")
                 continue
 
-            self._logger.info(f"Plugin '{plugin_name}' produced output. Writing to sink: {sink_marker.path}")
+            self._logger.info(f"Plugin '{p_name}' produced output. Writing to sink: {sink_marker.name}")
             try:
                 # We need to resolve the path relative to the case directory
-                output_path = self._context.case_path / sink_marker.path
+                # Get the io_mapping from case_config
+                io_mapping = case_config.get("io_mapping", {})
+                sink_config = io_mapping.get(sink_marker.name, {})
+                output_path_str = sink_config.get("path", "")
+                output_path = self._context.case_path / output_path_str
+                handler_args = sink_config.get("handler_args", sink_marker.handler_args)
                 self._context.data_hub.save(
                     data=return_value,
                     path=output_path,
-                    handler_args=sink_marker.handler_args
+                    handler_args=handler_args
                 )
                 self._logger.debug(f"Successfully wrote output to {output_path}")
             except Exception as e:
-                self._logger.error(f"Failed to write output for plugin '{plugin_name}' to {sink_marker.path}: {e}", exc_info=True)
-                raise
+                error_context = {
+                    "plugin_name": p_name,
+                    "sink_name": sink_marker.name if sink_marker else "Unknown",
+                    "output_path": str(output_path) if 'output_path' in locals() else "Unknown"
+                }
+                exc = DataSinkException(
+                    f"Failed to write output for plugin '{p_name}' to {sink_marker.name if sink_marker else 'Unknown'}: {e}",
+                    context=error_context,
+                    cause=e
+                )
+                handle_exception(exc, error_context)
+                raise exc
 
         self._logger.info("Pipeline run finished successfully.")
