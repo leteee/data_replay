@@ -11,6 +11,8 @@ from .decorator import handler
 @handler(name="csv", extensions=[".csv"])
 class CsvHandler(DataHandler):
     """Handles reading and writing CSV files."""
+    produced_type = pd.DataFrame
+    
     def load(self, path: Path) -> pd.DataFrame:
         return pd.read_csv(path)
 

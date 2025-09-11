@@ -12,6 +12,8 @@ from .decorator import handler
 class ParquetHandler(DataHandler):
     """Handles reading and writing Parquet files."""
     file_extension = ".parquet"
+    produced_type = pd.DataFrame
+    
     def load(self, path: Path) -> pd.DataFrame:
         return pd.read_parquet(path)
 

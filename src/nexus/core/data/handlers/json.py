@@ -3,7 +3,7 @@ Handler for JSON data.
 '''
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Union
 
 from .base import DataHandler
 from .decorator import handler
@@ -12,6 +12,8 @@ from .decorator import handler
 class JsonHandler(DataHandler):
     """Handles reading and writing JSON files."""
     file_extension = ".json"
+    produced_type = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+    
     def load(self, path: Path) -> Any:
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)

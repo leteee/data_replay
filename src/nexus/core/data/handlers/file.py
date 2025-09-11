@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 import shutil
 
 from .base import DataHandler
@@ -12,6 +12,7 @@ class FileHandler(DataHandler):
     It does not load the entire file content into memory.
     """
     file_extension = None # This handler is generic and should be specified by name
+    produced_type = BinaryIO
 
     def load(self, path: Path) -> Any:
         """Returns a file handle to the specified path in read-binary mode."""

@@ -4,7 +4,7 @@ This module defines the base interface for data handlers.
 
 import abc
 from pathlib import Path
-from typing import Any
+from typing import Any, Type
 
 class DataHandler(abc.ABC):
     """
@@ -13,6 +13,7 @@ class DataHandler(abc.ABC):
     """
     file_extension: str | None = None
     handles_directories: bool = False
+    produced_type: Type | None = None
 
     @abc.abstractmethod
     def load(self, path: Path) -> Any:

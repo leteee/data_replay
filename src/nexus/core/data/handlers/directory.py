@@ -18,6 +18,7 @@ class DirectoryHandler(DataHandler):
     Simply returns the absolute path to the directory.
     """
     handles_directories = True
+    produced_type = Path
     
     def load(self, path: Path) -> Path:
         """
