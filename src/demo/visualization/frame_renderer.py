@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from nexus.core.plugin.decorator import plugin
 from nexus.core.plugin.typing import DataSource
+from nexus.core.context import PluginContext
 
 
 class FrameRendererConfig(BaseModel):
@@ -42,11 +43,14 @@ class FrameRendererConfig(BaseModel):
     output_key=None,  # This plugin writes files to disk, doesn't return to DataHub
     default_config=FrameRendererConfig
 )
-def render_frames(config: FrameRendererConfig, logger: Logger) -> None:
+def render_frames(context: PluginContext) -> None:
     """
     Renders predicted and ground truth data onto a series of image frames,
     creating a visual representation of the EKF predictions.
     """
+    config = context.config
+    logger = context.logger
+    
     logger.info(f"Using output directory: {config.rendered_frames_dir}")
 
     # --- Merge Data ---

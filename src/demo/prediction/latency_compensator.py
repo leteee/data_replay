@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from nexus.core.plugin.decorator import plugin
 from nexus.core.plugin.typing import DataSource, DataSink
+from nexus.core.context import PluginContext
 
 
 class LatencyCompensatorConfig(BaseModel):
@@ -88,12 +89,15 @@ class _EKF_CTRV:
     name="Latency Compensator",
     default_config=LatencyCompensatorConfig
 )
-def compensate_latency(config: LatencyCompensatorConfig, logger: Logger) -> pd.DataFrame:
+def compensate_latency(context: PluginContext) -> pd.DataFrame:
     """
     Compensates for a fixed latency in measurement data by predicting the state
     forward in time using an Extended Kalman Filter (EKF) with a Constant Turn
     Rate and Velocity (CTRV) model.
     """
+    config = context.config
+    logger = context.logger
+    
     ekf = _EKF_CTRV(config)
     # The 'measurements' field in the config is a ready-to-use DataFrame.
     df = config.measurements.copy()

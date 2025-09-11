@@ -12,12 +12,10 @@ from .resolvers import get_resolver_chain, ResolutionError
 
 class PluginExecutor:
     """
-    Executes a plugin with a fully hydrated context.
+    Executes a plugin with a fully prepared context.
 
-    This simplified executor adheres to the principle that all dependencies
-    are pre-resolved and passed via the `PluginContext`, primarily within
-    the `config` object. It standardizes the plugin signature and returns
-    the plugin's output for further processing by the PipelineRunner.
+    This executor supports the new PluginContext-based signature where plugins
+    receive a single context object containing all necessary dependencies.
     """
 
     def __init__(self, plugin_spec: PluginSpec, context: PluginContext):
@@ -29,12 +27,12 @@ class PluginExecutor:
         """
         Executes the plugin function with the prepared context and returns its result.
 
-        It inspects the plugin's signature to provide the expected arguments,
-        supporting the standard `(config, logger)` signature.
+        It inspects the plugin's signature to determine whether to pass individual
+        arguments or the new PluginContext object.
         """
         self._context.logger.info(f"Executing plugin: '{self._spec.name}'")
 
-        # 1. Prepare arguments based on standard signatures
+        # 1. Prepare arguments based on the function signature
         args_to_inject = self._prepare_arguments()
 
         # 2. Execute the plugin function
@@ -52,26 +50,32 @@ class PluginExecutor:
     def _prepare_arguments(self) -> dict[str, Any]:
         """
         Prepares the arguments for the plugin function based on its signature.
+        
+        Supports both the new PluginContext signature and the legacy signature
+        for backward compatibility.
         """
         args_to_inject = {}
         signature = inspect.signature(self._func)
         params = signature.parameters
 
-        # A simple injection mechanism for a standardized signature
-        if "config" in params:
-            args_to_inject["config"] = self._context.config
-        if "logger" in params:
-            args_to_inject["logger"] = self._context.logger
-        if "context" in params:
+        # Check if the plugin uses the new PluginContext signature
+        if len(params) == 1 and "context" in params:
+            # New signature: def plugin_function(context: PluginContext)
             args_to_inject["context"] = self._context
-        
-        # You can add more standard injectable parameters here if needed,
-        # e.g., data_hub, project_root, etc.
-
-        if len(args_to_inject) != len(params):
-            self._context.logger.warning(
-                f"Plugin '{self._spec.name}' has a non-standard signature: {signature}. "
-                f"Consider using the standard `(config, logger)` signature."
-            )
+        else:
+            # Legacy signature support: def plugin_function(config, logger)
+            if "config" in params:
+                args_to_inject["config"] = self._context.config
+            if "logger" in params:
+                args_to_inject["logger"] = self._context.logger
+            if "context" in params:
+                args_to_inject["context"] = self._context
+            
+            # Warn if using legacy signature
+            if len(params) > 0:
+                self._context.logger.warning(
+                    f"Plugin '{self._spec.name}' uses legacy signature: {signature}. "
+                    f"Consider updating to the new PluginContext signature: (context: PluginContext)"
+                )
 
         return args_to_inject

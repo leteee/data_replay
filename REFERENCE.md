@@ -13,18 +13,7 @@ Renders predicted and ground truth data onto a series of image frames,
 creating a visual representation of the EKF predictions.
 
 **Core Dependencies Injected:**
-`Logger`
-
-**Configuration Parameters (from Pydantic Model):**
-
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `video_manifest` | `DataFrame` | `PydanticUndefined` |  |
-| `predicted_states` | `DataFrame` | `PydanticUndefined` |  |
-| `rendered_frames_dir` | `Path` | `PydanticUndefined` |  |
-| `zoom_factor` | `float` | `5.0` |  |
-| `circle_radius_px` | `int` | `15` |  |
-| `circle_width_px` | `int` | `3` |  |
+`PluginContext`
 
 ### Latency Compensator
 
@@ -33,37 +22,14 @@ forward in time using an Extended Kalman Filter (EKF) with a Constant Turn
 Rate and Velocity (CTRV) model.
 
 **Core Dependencies Injected:**
-`Logger`
-
-**Configuration Parameters (from Pydantic Model):**
-
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `measurements` | `DataFrame` | `PydanticUndefined` |  |
-| `predicted_states` | `Optional` | `None` |  |
-| `latency_to_compensate_s` | `float` | `0.2` |  |
-| `measurement_noise_pos` | `float` | `0.5` |  |
-| `measurement_noise_vel` | `float` | `0.8` |  |
-| `measurement_noise_yaw` | `float` | `0.5` |  |
-| `process_noise_std_pos` | `float` | `0.5` |  |
-| `process_noise_std_vel` | `float` | `0.8` |  |
-| `process_noise_std_yaw` | `float` | `0.5` |  |
-| `process_noise_std_yaw_rate` | `float` | `0.3` |  |
+`PluginContext`
 
 ### Video Creator
 
 Creates a video from a sequence of image frames.
 
 **Core Dependencies Injected:**
-`Logger`
-
-**Configuration Parameters (from Pydantic Model):**
-
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `rendered_frames_dir` | `Path` | `PydanticUndefined` |  |
-| `replay_video` | `Optional` | `None` |  |
-| `fps` | `int` | `10` | Frames per second for the output video. |
+`PluginContext`
 
 ---
 ## Data Handlers

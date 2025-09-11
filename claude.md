@@ -70,7 +70,7 @@ This section tracks the progress of architectural refactoring.
 - [x] **Step 4: Update Handlers & DataHub**. Ensure `DataHub` and data handlers can be called for writing data, not just reading.
 - [x] **Step 5: Update Tests**. Modify the `e2e_test.py` to validate the new, complete I/O roundtrip for the refactored plugin.
 
-### Phase 2: Architectural Evolution (In Progress)
+### Phase 2: Architectural Evolution (Completed)
 - [x] **Step 1: Define Core Types V2**. Redefine core types in `src/nexus/core/plugin/typing.py`.
     - [x] Introduce `PluginContext` to act as the universal execution environment for plugins.
     - [x] Modify `DataSource` and `DataSink` to use a logical `name` instead of a physical `path`, decoupling plugins from the filesystem.
@@ -82,70 +82,33 @@ This section tracks the progress of architectural refactoring.
 - [x] **Step 4: Enhance `DataHub` and `Handlers`**.
     - [x] Update `DataHub` to resolve logical `name`s via the `io_mapping` in the case config.
     - [x] Augment the `@handler` decorator or a base class to include a `produced_type` "contract".
-- [ ] **Step 5: Refactor Plugins and Tests**.
-    - [ ] Update all existing plugins to use the new `(context: PluginContext)` signature.
-    - [ ] Update `case.yaml` files to use the new `io_mapping` section.
-    - [ ] Update `e2e_test.py` to validate the new, fully-decoupled I/O and execution model.
+- [x] **Step 5: Refactor Plugins and Tests**.
+    - [x] Update all existing plugins to use the new `(context: PluginContext)` signature.
+    - [x] Update `case.yaml` files to use the new `io_mapping` section.
+    - [x] Update `e2e_test.py` to validate the new, fully-decoupled I/O and execution model.
 
-# 5. Architectural Evolution Plan (Phase 2 Refactoring)
+# 5. Architectural Evolution Plan (Phase 3 Refactoring)
 
-To further enhance modularity, robustness, and developer experience, a second phase of refactoring is planned. The core goal is to achieve a complete **separation of concerns** between **static configuration (Config)**, **dynamic data (Data)**, and **business logic (Logic)**.
+Phase 2 of the refactoring has been completed successfully. All plugins now use the new `PluginContext` signature, and the `case.yaml` files have been updated to use the new `io_mapping` section. The end-to-end tests have been updated and are passing.
 
-### I. Step 1: Purify `ConfigManager`'s Role
-The `ConfigManager` will be simplified to be a pure, stateless calculator for hierarchical configuration (CLI > Case > Global). It will no longer have any knowledge of `DataSource` or `DataSink`, making its responsibility singular and clear.
+## Next Steps for Phase 3
 
-### II. Step 2: Introduce `PluginContext`
-The "config hydration" pattern will be replaced. A new `PluginContext` class will be introduced as the sole argument to a plugin's execution function. This context object acts as a clean, organized container for the run.
+With the successful completion of Phase 2, we can now plan the next steps for Phase 3 of the architectural evolution. The core goals for Phase 3 will be to further enhance modularity, robustness, and developer experience.
 
-- **Plugin Signature Change**:
-    - **Before**: `def my_plugin(config: HydratedModel, logger: Logger)`
-    - **After**: `def my_plugin(context: PluginContext)`
-- **`PluginContext` Contents**:
-    - `context.config`: The plugin's Pydantic `config_model` instance, containing only validated static parameters.
-    - `context.data`: A dictionary-like accessor to the actual input data loaded by the `DataHub`.
-    - `context.logger`: A pre-configured logger instance.
+### Potential Areas for Improvement
 
-This change makes plugin testing trivial, as `config` and `data` can be mocked independently.
+1. **Enhanced Type Safety**: Implement more comprehensive type checking and validation mechanisms to catch errors at compile time rather than runtime.
 
-### III. Step 3: Decouple I/O with Logical Names
-This is the most impactful change, designed to make plugins maximally reusable. `DataSource` and `DataSink` will be modified to refer to data by a **logical `name`** instead of a hardcoded `path`. The mapping from this logical name to a physical file path is defined within the `case.yaml` configuration.
+2. **Improved Error Handling**: Develop a more sophisticated error handling system that provides detailed context and suggestions for resolving issues.
 
-- **Before: Tightly Coupled Declaration**
-    ```python
-    # In plugin code
-    class MyConfig(BaseModel):
-        input_data: Annotated[pd.DataFrame, DataSource(path="data/input.csv")]
-    ```
+3. **Performance Optimization**: Optimize the framework's performance, especially for large datasets and complex pipelines.
 
-- **After: Decoupled Declaration**
-    ```python
-    # In plugin code
-    class MyConfig(BaseModel):
-        input_data: Annotated[pd.DataFrame, DataSource(name="raw_events")]
-        some_param: float
-    ```
-    ```yaml
-    # In case.yaml
-    io_mapping:
-      raw_events:
-        path: "case_specific_data/input.csv"
-        handler: "csv"
-      processed_events:
-        path: "{output_dir}/final_result.parquet"
+4. **Extended Plugin Ecosystem**: Create a richer ecosystem of plugins and handlers to support a wider range of use cases.
 
-    plugins:
-      my_plugin:
-        enable: true
-        config:
-          some_param: 0.95
-    ```
+5. **Advanced Configuration Management**: Implement advanced configuration management features such as configuration validation, versioning, and migration.
 
-This turns `case.yaml` into a powerful "wiring" diagram for data pipelines, allowing the same plugin to be reused in different contexts without any code changes.
+6. **Enhanced Testing Framework**: Develop a more comprehensive testing framework that includes unit tests, integration tests, and performance tests.
 
-### IV. Robustness: Pre-flight Type Safety Check
-To prevent runtime errors, the `PipelineRunner` will perform a "pre-flight check" before execution. It will validate that the data type produced by a `Handler` (e.g., `JsonHandler` produces a `dict`) matches the type expected by the plugin (e.g., `pd.DataFrame`).
+7. **Documentation and Tutorials**: Create comprehensive documentation and tutorials to help new users get started with the framework.
 
-This requires `Handlers` to declare their produced type, for example:
-`@handler(file_type="csv", produced_type=pd.DataFrame)`
-
-If a mismatch is detected, the framework will fail fast with a clear, actionable error message, pinpointing the exact location of the configuration error.
+By focusing on these areas, we can continue to evolve the framework into a more powerful, flexible, and user-friendly tool for building data processing pipelines.

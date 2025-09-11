@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from nexus.core.plugin.decorator import plugin
 from nexus.core.plugin.typing import DataSource, DataSink
+from nexus.core.context import PluginContext
 
 
 class VideoCreatorConfig(BaseModel):
@@ -36,10 +37,13 @@ class VideoCreatorConfig(BaseModel):
     name="Video Creator",
     default_config=VideoCreatorConfig
 )
-def create_video(config: VideoCreatorConfig, logger: Logger) -> None:
+def create_video(context: PluginContext) -> None:
     """
     Creates a video from a sequence of image frames.
     """
+    config = context.config
+    logger = context.logger
+    
     input_dir_path = config.rendered_frames_dir
     # 使用硬编码的输出路径，符合DataSink的定义
     output_video_path = Path("output/replay_video.mp4")
