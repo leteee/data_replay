@@ -40,9 +40,9 @@ This checklist is used to record the core features that the project must support
 
 - **Pluggable Architecture**: Core business logic is implemented by independent, reusable plugins.
 - **Pure-function Plugins**: Plugins are designed as pure data transformation functions that receive inputs via a config object and return a result, separating them from I/O operations.
-- **Unified Dependency Declaration**: A plugin's Pydantic `config_model` serves as a single, unified “manifest” for all its dependencies, using `Annotated` types to declare both `DataSource` inputs and `DataSink` outputs.
+- **Unified Dependency Declaration**: A plugin's Pydantic `config_model` serves as a single, unified "manifest" for all its dependencies, using `Annotated` types to declare both `DataSource` inputs and `DataSink` outputs.
 - **Automated I/O**: The framework automatically discovers, loads, injects all `DataSource` dependencies, and writes the plugin's return value to the specified `DataSink`.
-- **Minimal Plugin Signature**: Plugins require a minimal function signature (e.g., `(config, logger)`), with a single, defined return value if output is needed.
+- **Minimal Plugin Signature**: Plugins require a minimal function signature (e.g., `(context: PluginContext)`), with a single, defined return value if output is needed.
 - **Layered Configuration**:
     - Supports multiple levels of configuration priority: **Command-line arguments > Case configuration > Global configuration > In-code `DataSource` declarations**.
     - Automatically resolves relative paths against the case directory.
@@ -55,6 +55,8 @@ This checklist is used to record the core features that the project must support
     - All path configurations support both absolute and relative paths.
     - Relative paths are automatically resolved from the case directory by default.
 - **End-to-End Testing**: The project includes a robust, `pytest`-based end-to-end test suite.
+- **Logical I/O Names**: Plugins use logical names for I/O declarations instead of hardcoded file paths, allowing the same plugin to be reused in different contexts by simply re-wiring its inputs and outputs in the `case.yaml` file.
+- **Pre-flight Type Safety Check**: The framework performs a pre-flight type check before execution to validate that the data type produced by a Handler matches the type expected by the plugin, preventing runtime errors.
 
 # 4. Refactoring Progress
 
@@ -87,39 +89,16 @@ This section tracks the progress of architectural refactoring.
     - [x] Update `case.yaml` files to use the new `io_mapping` section.
     - [x] Update `e2e_test.py` to validate the new, fully-decoupled I/O and execution model.
 
-# 5. Architectural Evolution Plan (Phase 3 Refactoring)
+### Phase 3: Enhanced Type Safety (Completed)
+- [x] **Step 1: Implement Pre-flight Type Checking**.
+    - [x] Add `produced_type` attribute to all data handlers to declare their output types.
+    - [x] Enhance the DataSource discovery mechanism to capture expected types from plugin annotations.
+    - [x] Implement pre-flight type checks in the PipelineRunner to validate data types before execution.
+- [x] **Step 2: Improve Error Handling**.
+    - [x] The pre-flight type checks provide early detection of type mismatches.
+    - [x] Clear warning messages are logged when type mismatches are detected.
 
-Phase 2 of the refactoring has been completed successfully. All plugins now use the new `PluginContext` signature, and the `case.yaml` files have been updated to use the new `io_mapping` section. The end-to-end tests have been updated and are passing.
-
-Phase 3 of the refactoring has also been completed. We have enhanced type safety by implementing pre-flight type checks that validate the data types produced by handlers against the types expected by plugins.
-
-## Completed Improvements in Phase 3
-
-1. **Enhanced Type Safety**: 
-   - Implemented pre-flight type checks in the PipelineRunner to validate data types before execution
-   - Added `produced_type` attribute to all data handlers to declare their output types
-   - Enhanced the DataSource discovery mechanism to capture expected types from plugin annotations
-
-2. **Improved Error Handling**: 
-   - The pre-flight type checks provide early detection of type mismatches
-   - Clear warning messages are logged when type mismatches are detected
-
-These improvements make the framework more robust by catching type-related errors before execution, making it easier to debug configuration issues.
-
-## Next Steps for Phase 4
-
-With the successful completion of Phase 3, we can now consider additional improvements:
-
-### Potential Areas for Improvement
-
-1. **Performance Optimization**: Optimize the framework's performance, especially for large datasets and complex pipelines.
-
-2. **Extended Plugin Ecosystem**: Create a richer ecosystem of plugins and handlers to support a wider range of use cases.
-
-3. **Advanced Configuration Management**: Implement advanced configuration management features such as configuration validation, versioning, and migration.
-
-4. **Enhanced Testing Framework**: Develop a more comprehensive testing framework that includes unit tests, integration tests, and performance tests.
-
-5. **Documentation and Tutorials**: Create comprehensive documentation and tutorials to help new users get started with the framework.
-
-By focusing on these areas, we can continue to evolve the framework into a more powerful, flexible, and user-friendly tool for building data processing pipelines.
+With the successful completion of all three phases, the framework now has a robust architecture with:
+1. Pure-function plugins using the PluginContext signature
+2. Logical I/O names for better decoupling
+3. Enhanced type safety with pre-flight checks
