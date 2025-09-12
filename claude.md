@@ -121,3 +121,28 @@ This phase focuses on cleaning up the existing implementation, reinforcing archi
     - [x] Add support for configurable plugin and handler paths in global configuration.
     - [x] Implement discovery of plugins and handlers from custom directories.
     - [x] Support both relative and absolute paths for plugin and handler directories.
+
+## 5. New Feature: Configurable Plugin and Handler Paths
+
+This feature allows users to load plugins and handlers from custom directories specified in the global configuration. This enhancement provides greater flexibility in organizing and managing custom plugins and handlers.
+
+### Configuration
+
+Users can specify custom plugin and handler paths in the `config/global.yaml` file:
+
+```yaml
+plugin_paths:
+  - "./custom_plugins"
+  - "/absolute/path/to/plugins"
+  
+handler_paths:
+  - "./custom_handlers"
+  - "/absolute/path/to/handlers"
+```
+
+### Benefits
+
+1. **Flexibility**: Users can organize their custom plugins and handlers in separate directories
+2. **Modularity**: Custom components can be developed and maintained independently
+3. **Path Support**: Both relative and absolute paths are supported
+4. **Backward Compatibility**: Existing configurations and functionality remain unaffected
