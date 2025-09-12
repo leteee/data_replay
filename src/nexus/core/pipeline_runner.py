@@ -39,7 +39,14 @@ class PipelineRunner:
         plugin_modules = self._context.run_config.get("plugin_modules", [])
         if not plugin_modules:
             self._logger.warning("No 'plugin_modules' defined in config. No plugins will be loaded.")
-        discover_plugins(plugin_modules, self._logger)
+        # Pass additional parameters to plugin discovery
+        from .plugin.discovery import discover_plugins
+        discover_plugins(
+            plugin_modules, 
+            self._logger, 
+            self._context.project_root,
+            self._context.run_config.get("plugin_paths", [])
+        )
 
     def _preflight_type_check(self, data_source_name: str, source_config: dict, handler: DataHandler) -> bool:
         """
@@ -76,101 +83,6 @@ class PipelineRunner:
         else:
             self._logger.warning(f"Type mismatch for '{data_source_name}': expected {expected_type}, got {produced_type}")
             return False
-
-    def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]], case_config: dict) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
-        """
-        Pre-scans active plugins to discover DataSource and DataSink declarations.
-
-        Returns:
-            A tuple containing:
-            - A dictionary of discovered data sources for the ConfigManager.
-            - A dictionary mapping plugin names to their DataSource fields.
-            - A dictionary mapping plugin names to their DataSink fields.
-        """
-        base_data_sources = {}
-        plugin_sources = {}
-        plugin_sinks = {}
-
-        # Get io_mapping from case_config
-        io_mapping = case_config.get("io_mapping", {})
-        self._logger.debug(f"io_mapping: {io_mapping}")
-
-        for step_config in pipeline_steps:
-            plugin_name = step_config.get("plugin")
-            if not plugin_name or plugin_name not in PLUGIN_REGISTRY or not step_config.get("enable", True):
-                continue
-
-            plugin_spec = PLUGIN_REGISTRY[plugin_name]
-            if not plugin_spec.config_model:
-                continue
-
-            plugin_sources[plugin_name] = {}
-            plugin_sinks[plugin_name] = {}
-
-            try:
-                # Use get_type_hints to correctly resolve forward references (e.g., from __future__ import annotations)
-                type_hints = get_type_hints(plugin_spec.config_model, include_extras=True)
-            except (NameError, TypeError) as e:
-                self._logger.error(f"Could not resolve type hints for {plugin_name}'s config: {e}")
-                continue
-
-            for field_name, field_type in type_hints.items():
-                # Handle Union types (like Optional[Annotated[...]])
-                field_args = get_args(field_type)
-                # If it's a Union, we need to check the first argument (the Annotated type)
-                if field_args and get_origin(field_type) is Union:
-                    # Check if the first argument is Annotated
-                    if get_origin(field_args[0]) is Annotated:
-                        field_metadata = get_args(field_args[0])[1:]  # Skip the actual type, get metadata
-                        # Get the actual type for type checking
-                        actual_type = get_args(field_args[0])[0]
-                    else:
-                        continue
-                # Handle direct Annotated types
-                elif get_origin(field_type) is Annotated:
-                    field_metadata = get_args(field_type)[1:]  # Skip the actual type, get metadata
-                    # Get the actual type for type checking
-                    actual_type = get_args(field_type)[0]
-                else:
-                    continue
-
-                for item in field_metadata:
-                    if isinstance(item, DataSource):
-                        # For ConfigManager (name -> path/handler mapping)
-                        # Note: We need a unique name. For now, let's use the name attribute.
-                        name = item.name
-                        self._logger.debug(f"Found DataSource with name: {name}")
-                        if name in base_data_sources:
-                            self._logger.warning(f"Data source name '{name}' is declared by multiple plugins.")
-                        
-                        # Get path and handler from io_mapping
-                        source_config = io_mapping.get(name, {})
-                        self._logger.debug(f"Source config for '{name}': {source_config}")
-                        path = source_config.get("path", "")
-                        handler = source_config.get("handler", "")
-                        self._logger.debug(f"Path for '{name}': {path}")
-                        self._logger.debug(f"Handler for '{name}': {handler}")
-                        
-                        # Build handler_args
-                        handler_args = item.handler_args.copy() if item.handler_args else {}
-                        if handler:
-                            handler_args["name"] = handler
-                        
-                        base_data_sources[name] = {
-                            "path": path,
-                            "handler_args": handler_args,
-                            "expected_type": actual_type  # Store expected type for pre-flight check
-                        }
-                        self._logger.debug(f"Added to base_data_sources: {name} -> {base_data_sources[name]}")
-                        # For runner (plugin -> field -> DataSource mapping)
-                        plugin_sources[plugin_name][field_name] = item
-
-                    elif isinstance(item, DataSink):
-                        plugin_sinks[plugin_name][field_name] = item
-
-        if base_data_sources:
-            self._logger.info(f"Discovered {len(base_data_sources)} data sources from plugin configs.")
-        return base_data_sources, plugin_sources, plugin_sinks
 
     def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]], case_config: dict) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
         """
@@ -362,11 +274,31 @@ class PipelineRunner:
                 handle_exception(exc, error_context)
                 raise exc
 
-            # --- 2c. Execute Plugin ---
+            # --- 2c. Resolve Output Path ---
+            resolved_output_path = None
+            sinks_for_plugin = plugin_sinks.get(p_name, {})
+            if sinks_for_plugin:
+                if len(sinks_for_plugin) > 1:
+                    self._logger.warning(f"Plugin '{p_name}' has multiple DataSinks defined. Only one is supported for path injection. Using the first one found.")
+                
+                # Get the first (and only) sink
+                _sink_field, sink_marker = list(sinks_for_plugin.items())[0]
+
+                # Resolve the path
+                io_mapping = case_config.get("io_mapping", {})
+                sink_config = io_mapping.get(sink_marker.name, {})
+                output_path_str = sink_config.get("path", "")
+                if output_path_str:
+                    resolved_output_path = self._context.case_path / output_path_str
+                else:
+                    self._logger.warning(f"DataSink '{sink_marker.name}' for plugin '{p_name}' has no path defined in io_mapping.")
+
+            # --- 2d. Execute Plugin ---
             plugin_context = PluginContext(
                 data_hub=self._context.data_hub, logger=self._context.logger,
                 project_root=self._context.project_root, case_path=self._context.case_path,
-                config=config_object
+                config=config_object,
+                output_path=resolved_output_path  # Pass the resolved path
             )
 
             try:
@@ -385,8 +317,7 @@ class PipelineRunner:
                 handle_exception(exc, error_context)
                 raise exc
 
-            # --- 2d. Handle Output ---
-            sinks_for_plugin = plugin_sinks.get(p_name, {})
+            # --- 2e. Handle Output ---
             if not sinks_for_plugin:
                 if return_value is not None:
                     self._logger.debug(f"Plugin '{p_name}' returned a value but has no DataSink declared.")
@@ -399,7 +330,8 @@ class PipelineRunner:
             sink_field, sink_marker = list(sinks_for_plugin.items())[0]
 
             if return_value is None:
-                self._logger.warning(f"Plugin '{p_name}' has a DataSink for field '{sink_field}' but returned None.")
+                # This is now expected for plugins that write directly to disk
+                self._logger.debug(f"Plugin '{p_name}' has a DataSink for field '{sink_field}' but returned None.")
                 continue
 
             self._logger.info(f"Plugin '{p_name}' produced output. Writing to sink: {sink_marker.name}")

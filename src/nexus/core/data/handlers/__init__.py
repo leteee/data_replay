@@ -7,7 +7,13 @@ from .decorator import HANDLER_REGISTRY
 from .discovery import discover_handlers
 
 _handlers_discovered = False
+_discovery_context = None
 logger = logging.getLogger(__name__)
+
+def initialize_handler_discovery(context=None):
+    """Initialize the handler discovery with context."""
+    global _discovery_context
+    _discovery_context = context
 
 def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
     """
@@ -30,7 +36,9 @@ def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
     global _handlers_discovered
     if not _handlers_discovered:
         # This check ensures that discovery only runs once per process.
-        discover_handlers(logger)
+        project_root = _discovery_context.project_root if _discovery_context else None
+        handler_paths = _discovery_context.run_config.get("handler_paths", []) if _discovery_context else []
+        discover_handlers(logger, project_root, handler_paths)
         _handlers_discovered = True
 
     handler_cls: Optional[Type[DataHandler]] = None

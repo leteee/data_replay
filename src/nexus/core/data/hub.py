@@ -9,7 +9,7 @@ from logging import Logger
 
 from pydantic import BaseModel
 
-from .handlers import handler_registry
+from .handlers import handler_registry, initialize_handler_discovery
 from ..exceptions import (
     DataSourceException,
     DataSinkException,
@@ -34,11 +34,14 @@ class DataHub:
     Manages the state of data in the pipeline.
     """
 
-    def __init__(self, case_path: Path, logger: Logger = None):
+    def __init__(self, case_path: Path, logger: Logger = None, context=None):
         self._case_path = case_path
         self._data: Dict[str, Any] = {}
         self._registry: Dict[str, DataSource] = {}
         self.logger = logger if logger else logging.getLogger(__name__)
+        
+        # Initialize handler discovery with context
+        initialize_handler_discovery(context)
 
     def add_data_sources(self, new_sources: dict):
         """Merges new data source definitions into the DataHub's registry."""
@@ -132,20 +135,11 @@ class DataHub:
 
     def get_path(self, name: str) -> Path | None:
         """
-        Gets the registered file path for a data source, ensuring existence for handlers.
+        Gets the registered file path for a data source, if it exists in the registry.
+        This method does not perform any I/O or existence checks.
         """
         if name in self._registry:
-            source = self._registry[name]
-            path = source.path
-            try:
-                handler = self._get_handler_instance(source)
-                # For certain handlers (like DirectoryHandler), load ensures existence.
-                if handler.handles_directories:
-                    self.logger.debug(f"Ensuring directory exists for '{name}' at {path} via handler.load().")
-                    handler.load(path)
-            except Exception as e:
-                self.logger.error(f"Error ensuring path existence for '{name}' at {path}: {e}")
-            return path
+            return self._registry[name].path
         return None
 
     def save(self, data: Any, path: Path, handler_args: dict | None = None):

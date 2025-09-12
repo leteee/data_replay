@@ -1,37 +1,37 @@
+"""
+Defines the context objects used throughout the Nexus framework.
+"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from logging import Logger
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel
+
 from .data.hub import DataHub
 
-@dataclass(frozen=True)
+
+@dataclass
 class NexusContext:
     """
     The global context for a pipeline run.
-    It holds all major services and configurations.
     """
     project_root: Path
-    cases_root: Path
     case_path: Path
     data_hub: DataHub
     logger: Logger
-    # This will hold the merged configuration from global and case files
-    run_config: dict 
+    run_config: Dict[str, Any] = field(default_factory=dict)
 
-@dataclass(frozen=True)
+
+@dataclass
 class PluginContext:
     """
-    The specific context passed to a single plugin for execution.
-    It provides a focused view of the overall NexusContext, tailored
-    for the plugin.
+    The context provided to a plugin during execution.
     """
-    # Core services from the global context
     data_hub: DataHub
     logger: Logger
-
-    # Paths relevant to the execution
     project_root: Path
     case_path: Path
-
-    # Plugin-specific configuration, fully resolved and validated
-    config: dict | object # Can be a dict or a Pydantic model instance
+    config: BaseModel | None = None
+    output_path: Optional[Path] = None

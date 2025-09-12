@@ -86,21 +86,23 @@ def pipeline(
 
     logger.info(f"====== Running Case: {case_path.name} ======")
 
-    data_hub = DataHub(case_path=case_path, logger=logger)
-    
     run_config = {
         "cli_args": {},
-        "plugin_modules": global_config.get("plugin_modules", [])
+        "plugin_modules": global_config.get("plugin_modules", []),
+        "plugin_paths": global_config.get("plugin_paths", []),
+        "handler_paths": global_config.get("handler_paths", [])
     }
 
     nexus_context = NexusContext(
         project_root=project_root,
-        cases_root=cases_root,
         case_path=case_path,
-        data_hub=data_hub,
+        data_hub=None,  # Will be set after creation
         logger=logger,
         run_config=run_config
     )
+    
+    data_hub = DataHub(case_path=case_path, logger=logger, context=nexus_context)
+    nexus_context.data_hub = data_hub
 
     try:
         runner = PipelineRunner(nexus_context)
@@ -146,21 +148,23 @@ def plugin(
 
     logger.info(f"====== Running Plugin: {name} in Case: {case_path.name} ======")
 
-    data_hub = DataHub(case_path=case_path, logger=logger)
-    
     run_config = {
         "cli_args": {},
-        "plugin_modules": global_config.get("plugin_modules", [])
+        "plugin_modules": global_config.get("plugin_modules", []),
+        "plugin_paths": global_config.get("plugin_paths", []),
+        "handler_paths": global_config.get("handler_paths", [])
     }
 
     nexus_context = NexusContext(
         project_root=project_root,
-        cases_root=cases_root,
         case_path=case_path,
-        data_hub=data_hub,
+        data_hub=None,  # Will be set after creation
         logger=logger,
         run_config=run_config
     )
+    
+    data_hub = DataHub(case_path=case_path, logger=logger, context=nexus_context)
+    nexus_context.data_hub = data_hub
 
     try:
         runner = PipelineRunner(nexus_context)

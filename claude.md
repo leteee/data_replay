@@ -57,6 +57,7 @@ This checklist is used to record the core features that the project must support
 - **End-to-End Testing**: The project includes a robust, `pytest`-based end-to-end test suite.
 - **Logical I/O Names**: Plugins use logical names for I/O declarations instead of hardcoded file paths, allowing the same plugin to be reused in different contexts by simply re-wiring its inputs and outputs in the `case.yaml` file.
 - **Pre-flight Type Safety Check**: The framework performs a pre-flight type check before execution to validate that the data type produced by a Handler matches the type expected by the plugin, preventing runtime errors.
+- **Configurable Plugin and Handler Paths**: Plugins and handlers can be loaded from custom directories specified in the global configuration, supporting both relative and absolute paths.
 
 # 4. Refactoring Progress
 
@@ -102,3 +103,21 @@ With the successful completion of all three phases, the framework now has a robu
 1. Pure-function plugins using the PluginContext signature
 2. Logical I/O names for better decoupling
 3. Enhanced type safety with pre-flight checks
+
+### Phase 4: Simplification and Architectural Reinforcement (Completed)
+
+This phase focuses on cleaning up the existing implementation, reinforcing architectural principles, and improving the decoupling of plugins from the filesystem.
+
+- [x] **Step 1: Code Cleanup**.
+    - [x] Remove the duplicated `_discover_io_declarations` method in `pipeline_runner.py` to improve maintainability.
+- [x] **Step 2: Reinforce Plugin Purity**.
+    - [x] Refactor the `video_creator.py` plugin to better align with architectural principles.
+    - [x] Remove hardcoded output paths from the plugin.
+    - [x] The `PipelineRunner` now injects the final output path into the `PluginContext` before execution.
+    - [x] The plugin now uses the path from the context to write its output, removing its dependency on the file system structure.
+- [x] **Step 3: Simplify Core Components**.
+    - [x] Review and simplify the `DataHub.get_path` method to ensure it has a single responsibility (returning a path) without triggering side effects.
+- [x] **Step 4: Enhanced Plugin and Handler Discovery**.
+    - [x] Add support for configurable plugin and handler paths in global configuration.
+    - [x] Implement discovery of plugins and handlers from custom directories.
+    - [x] Support both relative and absolute paths for plugin and handler directories.

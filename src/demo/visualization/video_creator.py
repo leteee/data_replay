@@ -45,13 +45,16 @@ def create_video(context: PluginContext) -> None:
     logger = context.logger
     
     input_dir_path = config.rendered_frames_dir
-    # 使用硬编码的输出路径，符合DataSink的定义
-    output_video_path = Path("output/replay_video.mp4")
+    output_video_path = context.output_path
+
+    if not output_video_path:
+        logger.error("Output path not provided in the context for this plugin run.")
+        return
 
     # Ensure input_dir_path is a Path object and exists
     if not isinstance(input_dir_path, Path) or not input_dir_path.exists() or not input_dir_path.is_dir():
         logger.error(f"Input directory does not exist or is not a directory: {input_dir_path}")
-        return None
+        return
 
     image_files = sorted(
         [f for f in input_dir_path.glob('*.png')],
@@ -60,33 +63,30 @@ def create_video(context: PluginContext) -> None:
 
     if not image_files:
         logger.warning(f"No PNG images found in {input_dir_path}, skipping video creation.")
-        return None
+        return
 
     logger.info(f"Found {len(image_files)} images in {input_dir_path}.")
 
-    # 构建完整的输出路径
-    full_output_path = input_dir_path.parent.parent / output_video_path
-    
-    # 确保输出目录存在
-    full_output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Ensure the output directory exists
+    output_video_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Clean up existing video file if it exists
-    if full_output_path.exists():
-        full_output_path.unlink()
+    if output_video_path.exists():
+        output_video_path.unlink()
 
     first_image_path = str(image_files[0])
     frame = cv2.imread(first_image_path)
     if frame is None:
         logger.error(f"Could not read the first image: {first_image_path}")
-        return None
+        return
     height, width, _ = frame.shape
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter(str(full_output_path), fourcc, config.fps, (width, height))
+    video = cv2.VideoWriter(str(output_video_path), fourcc, config.fps, (width, height))
 
     for image_file in image_files:
         video.write(cv2.imread(str(image_file)))
 
     video.release()
-    logger.info(f"Successfully created video: {full_output_path}")
-    return None
+    logger.info(f"Successfully created video: {output_video_path}")
+    return

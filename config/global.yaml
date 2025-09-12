@@ -4,3 +4,7 @@ log_file: "./logs/app.log"
 plugin_enable: True
 plugin_modules:
   - demo
+plugin_paths:
+  - "./custom_plugins"
+handler_paths:
+  - "./custom_plugins"
