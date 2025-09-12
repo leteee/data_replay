@@ -90,3 +90,16 @@ def test_generate_docs():
     # Check if plugins from the demo case are in the docs
     for plugin_name in load_demo_case_plugins():
         assert f"### {plugin_name}" in content, f"{plugin_name} not found in documentation"
+
+
+def test_di_integration():
+    """Tests dependency injection container integration."""
+    # Run the DI integration test as a subprocess to ensure isolation
+    result = subprocess.run(
+        [sys.executable, "-m", "tests.di_integration_test"],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT
+    )
+    assert result.returncode == 0, f"DI integration test failed: {result.stderr}"
