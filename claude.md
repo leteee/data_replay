@@ -146,3 +146,37 @@ handler_paths:
 2. **Modularity**: Custom components can be developed and maintained independently
 3. **Path Support**: Both relative and absolute paths are supported
 4. **Backward Compatibility**: Existing configurations and functionality remain unaffected
+
+## 6. Next Refactoring Phase: Dependency Injection Container
+
+This phase focuses on implementing a dependency injection container to further enhance the modularity and testability of the framework.
+
+### Goals
+1. Implement a dependency injection container for managing framework services
+2. Enable components to depend on interfaces rather than concrete implementations
+3. Allow easy mocking of dependencies in test environments
+
+### Steps
+
+#### Step 1: Dependency Injection Container Implementation
+- [x] **Create DI Container**
+  - Implement a dependency injection container to manage all framework services
+  - Allow registration of services with their interfaces
+  - Implement service resolution with lifecycle management
+
+#### Step 2: Service Interface Definition
+- [x] **Define Service Interfaces**
+  - Define interfaces for core services (DataHub, Logger, ConfigManager, etc.)
+  - Update components to depend on interfaces rather than concrete implementations
+
+#### Step 3: Component Refactoring
+- [ ] **Refactor Components to Use DI**
+  - Update PipelineRunner to resolve dependencies through the container
+  - Update PluginExecutor to receive dependencies from the container
+  - Ensure all core components use the DI container for dependency resolution
+
+#### Step 4: Testing Enhancement
+- [ ] **Enhance Testability**
+  - Implement easy mocking of dependencies in test environments
+  - Add integration tests for the DI container
+  - Update existing tests to use the new DI approach
