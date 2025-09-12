@@ -180,3 +180,119 @@ This phase focuses on implementing a dependency injection container to further e
   - Implement easy mocking of dependencies in test environments
   - Add integration tests for the DI container
   - Update existing tests to use the new DI approach
+
+## 7. Future Refactoring Opportunities
+
+This section documents additional refactoring opportunities that can further enhance the framework's architecture and maintainability.
+
+### Dependency Injection System Improvements
+
+#### 1. Simplify Service Registration
+- **Current Issue**: Manual registration of each service is verbose
+- **Improvement**: Implement bulk registration methods
+- **Example**:
+  ```python
+  # Current verbose approach
+  container.register(LoggerInterface, LoggerAdapter(logger))
+  container.register(DataHubInterface, DataHubAdapter(data_hub))
+  
+  # Improved approach
+  container.register_core_services(nexus_context)
+  ```
+
+#### 2. Enhanced Error Handling
+- **Current Issue**: Overly broad exception handling
+- **Improvement**: More precise exception handling and better error reporting
+- **Example**:
+  ```python
+  # Current approach
+  try:
+      self._logger = container.resolve(LoggerInterface)
+  except Exception:
+      self._logger = context.logger
+  
+  # Improved approach
+  try:
+      self._logger = container.resolve(LoggerInterface)
+  except ServiceNotFoundError:
+      self._logger = context.logger
+  except Exception as e:
+      self._logger.error(f"DI error: {e}")
+      self._logger = context.logger
+  ```
+
+#### 3. Better Test Support
+- **Current Issue**: Limited test infrastructure for DI
+- **Improvement**: Add test-specific containers and mock support
+- **Example**:
+  ```python
+  # Production
+  container.register(LoggerInterface, LoggerAdapter(logger))
+  
+  # Test
+  test_container = TestDIContainer()
+  test_container.register(LoggerInterface, MockLogger())
+  ```
+
+### Plugin Architecture Enhancements
+
+#### 1. Maintain Functional Plugin Approach
+- Keep plugins as functions rather than converting them to classes
+- Continue to leverage the benefits of functional programming
+- Focus on improving dependency injection rather than structural changes
+
+#### 2. Improved Context Management
+- **Current**: Mixed use of direct dependencies and DI
+- **Improvement**: Consistent use of DI for all dependencies
+- **Example**:
+  ```python
+  # Current mixed approach
+  def plugin_function(context: PluginContext):
+      data = context.data_hub.get("data")  # Direct access
+      
+  # Improved consistent approach  
+  def plugin_function(context: PluginContext):
+      data_hub = container.resolve(DataHubInterface)  # DI access
+      data = data_hub.get("data")
+  ```
+
+### Performance Optimizations
+
+#### 1. Service Resolution Caching
+- Cache service keys and resolution results
+- Reduce redundant type introspection operations
+- Implement lazy initialization for expensive services
+
+#### 2. Configuration Management
+- Add service configuration support via config files
+- Support environment variable overrides
+- Implement configuration validation
+
+### Advanced Features
+
+#### 1. Decorator-Based Service Registration
+- Add decorators to simplify service registration
+- Support automatic service discovery
+- Example:
+  ```python
+  @di.service(lifecycle=ServiceLifeCycle.SINGLETON)
+  class MyService:
+      pass
+  ```
+
+#### 2. Generic Type Support
+- Add better type safety with generics
+- Implement runtime type validation
+- Improve IDE support and autocomplete
+
+#### 3. Lifecycle Management
+- Add more sophisticated service lifecycles
+- Support scoped services for request-level dependencies
+- Implement service disposal patterns
+
+### Backward Compatibility
+- Maintain existing API for smooth transitions
+- Provide adapter layers for legacy code
+- Ensure all changes are non-breaking
+
+These improvements can be implemented incrementally, with each phase building on the previous one to continuously enhance the framework's architecture while maintaining stability and backward compatibility.
