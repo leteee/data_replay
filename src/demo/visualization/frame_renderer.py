@@ -40,7 +40,6 @@ class FrameRendererConfig(BaseModel):
 
 @plugin(
     name="Frame Renderer",
-    output_key=None,  # This plugin writes files to disk, doesn't return to DataHub
     default_config=FrameRendererConfig
 )
 def render_frames(context: PluginContext) -> None:
