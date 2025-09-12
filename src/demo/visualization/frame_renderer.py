@@ -36,6 +36,8 @@ class FrameRendererConfig(BaseModel):
     zoom_factor: float = 5.0
     circle_radius_px: int = 15
     circle_width_px: int = 3
+    viewport_width: int = 1920
+    viewport_height: int = 1080
 
 
 @plugin(
@@ -73,7 +75,7 @@ def render_frames(context: PluginContext) -> None:
         if pd.isna(row.get('image_path')) or pd.isna(row.get('predicted_x')) or pd.isna(row.get('true_x')):
             continue
 
-        img = Image.new('RGB', (1920, 1080), color='black')
+        img = Image.new('RGB', (config.viewport_width, config.viewport_height), color='black')
         draw = ImageDraw.Draw(img)
 
         # --- Dynamic Camera Logic ---
