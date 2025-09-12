@@ -105,7 +105,8 @@ def pipeline(
     nexus_context.data_hub = data_hub
 
     try:
-        runner = PipelineRunner(nexus_context)
+        from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
+        runner = PipelineRunnerFactory.create(nexus_context)
         runner.run()
         logger.info(f"====== Case '{case_path.name}' finished successfully. ======")
     except BaseFrameworkException as e:
@@ -167,7 +168,8 @@ def plugin(
     nexus_context.data_hub = data_hub
 
     try:
-        runner = PipelineRunner(nexus_context)
+        from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
+        runner = PipelineRunnerFactory.create(nexus_context)
         runner.run(plugin_name=name)
         logger.info(f"====== Plugin '{name}' finished successfully. ======")
     except BaseFrameworkException as e:

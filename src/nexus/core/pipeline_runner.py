@@ -23,6 +23,8 @@ from .exceptions import (
     DataSourceException
 )
 from .exception_handler import handle_exception
+from .di import container, LoggerInterface, DataHubInterface, ConfigManagerInterface
+from .di.adapters import LoggerAdapter, DataHubAdapter, ConfigManagerAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +37,14 @@ class PipelineRunner:
 
     def __init__(self, context: NexusContext):
         self._context = context
-        self._logger = context.logger
+        # Use DI container for logger if available, otherwise use direct injection
+        try:
+            self._logger = container.resolve(LoggerInterface)
+        except Exception:
+            self._logger = context.logger
         plugin_modules = self._context.run_config.get("plugin_modules", [])
         if not plugin_modules:
             self._logger.warning("No 'plugin_modules' defined in config. No plugins will be loaded.")
-        # Pass additional parameters to plugin discovery
-        from .plugin.discovery import discover_plugins
         discover_plugins(
             plugin_modules, 
             self._logger, 
