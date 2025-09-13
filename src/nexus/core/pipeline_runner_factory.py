@@ -4,8 +4,7 @@ Factory for creating PipelineRunner instances using dependency injection.
 
 from .pipeline_runner import PipelineRunner
 from .context import NexusContext
-from .di import container, LoggerInterface, DataHubInterface
-from .di.adapters import LoggerAdapter, DataHubAdapter
+from .di import container
 
 
 class PipelineRunnerFactory:
@@ -22,18 +21,8 @@ class PipelineRunnerFactory:
         Returns:
             A configured PipelineRunner instance
         """
-        # Register services with the container if not already registered
-        try:
-            # Register logger
-            if context.logger:
-                container.register(LoggerInterface, LoggerAdapter(context.logger))
-                
-            # Register data hub
-            if context.data_hub:
-                container.register(DataHubInterface, DataHubAdapter(context.data_hub))
-        except Exception:
-            # If registration fails, continue without DI
-            pass
+        # Register all core services with the container
+        container.register_core_services(context)
             
         # Create and return the PipelineRunner
         return PipelineRunner(context)

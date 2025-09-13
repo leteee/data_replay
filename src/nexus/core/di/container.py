@@ -57,6 +57,43 @@ class DIContainer:
         
         self._logger.debug(f"Registered service: {service_key} with lifecycle {lifecycle}")
 
+    def register_core_services(self, context) -> None:
+        """
+        Register all core framework services from the given context.
+        
+        This is a convenience method that registers all standard framework services
+        in one call, simplifying the setup process.
+        
+        Args:
+            context: The NexusContext containing the core services to register
+        """
+        try:
+            # Register logger service
+            if hasattr(context, 'logger') and context.logger:
+                from .services import LoggerInterface
+                from .adapters import LoggerAdapter
+                self.register(LoggerInterface, LoggerAdapter(context.logger))
+                self._logger.debug("Registered core logger service")
+                
+            # Register data hub service
+            if hasattr(context, 'data_hub') and context.data_hub:
+                from .services import DataHubInterface
+                from .adapters import DataHubAdapter
+                self.register(DataHubInterface, DataHubAdapter(context.data_hub))
+                self._logger.debug("Registered core data hub service")
+                
+            # Additional core services can be registered here as needed
+            # For example:
+            # if hasattr(context, 'config_manager') and context.config_manager:
+            #     from .services import ConfigManagerInterface
+            #     from .adapters import ConfigManagerAdapter
+            #     self.register(ConfigManagerInterface, ConfigManagerAdapter(context.config_manager))
+            #     self._logger.debug("Registered core config manager service")
+                
+        except Exception as e:
+            self._logger.warning(f"Failed to register some core services: {e}")
+            # Don't re-raise to maintain backward compatibility
+
     def resolve(self, service_type: Type) -> Any:
         """
         Resolve a service from the container.

@@ -72,8 +72,35 @@ def test_global_container_functionality():
     print("Global container functionality test passed!")
 
 
+def test_bulk_service_registration():
+    """Test the new bulk service registration feature."""
+    # Create a test container
+    test_container = DIContainer()
+    
+    # Create a mock context
+    logger = logging.getLogger(__name__)
+    data_hub = DataHub(case_path=Path("."))
+    
+    class MockContext:
+        def __init__(self):
+            self.logger = logger
+            self.data_hub = data_hub
+    
+    context = MockContext()
+    
+    # Test bulk registration
+    test_container.register_core_services(context)
+    
+    # Verify services were registered
+    resolved_logger = test_container.resolve(LoggerInterface)
+    assert isinstance(resolved_logger, LoggerAdapter)
+    
+    print("Bulk service registration test passed!")
+
+
 if __name__ == "__main__":
     test_di_container_integration()
     test_singleton_lifecycle_integration()
     test_global_container_functionality()
+    test_bulk_service_registration()
     print("All DI integration tests passed!")
