@@ -6,6 +6,7 @@ from .container import DIContainer, container, ServiceNotFoundError, ServiceLife
 from .services import LoggerInterface, DataHubInterface, ConfigManagerInterface, PluginExecutorInterface, PipelineRunnerInterface
 from .adapters import LoggerAdapter, DataHubAdapter, ConfigManagerAdapter
 from .exceptions import DIException, ServiceResolutionException, ServiceRegistrationException, DependencyInjectionException
+from .testing import TestDIContainer, MockLogger, MockDataHub
 
 __all__ = [
     "DIContainer",
@@ -23,5 +24,8 @@ __all__ = [
     "DIException",
     "ServiceResolutionException",
     "ServiceRegistrationException",
-    "DependencyInjectionException"
+    "DependencyInjectionException",
+    "TestDIContainer",
+    "MockLogger",
+    "MockDataHub"
 ]
