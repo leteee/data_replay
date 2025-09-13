@@ -7,6 +7,12 @@ from abc import ABC, abstractmethod
 import logging
 import inspect
 
+from .exceptions import (
+    ServiceResolutionException, 
+    ServiceRegistrationException, 
+    DependencyInjectionException
+)
+
 
 class ServiceNotFoundError(Exception):
     """Raised when a requested service is not found in the container."""
@@ -46,16 +52,28 @@ class DIContainer:
             lifecycle: The lifecycle of the service (SINGLETON, TRANSIENT, SCOPED)
             factory: An optional factory function to create the service
         """
-        service_key = self._get_service_key(service_type)
-        
-        self._registrations[service_key] = {
-            "type": service_type,
-            "implementation": implementation,
-            "lifecycle": lifecycle,
-            "factory": factory
-        }
-        
-        self._logger.debug(f"Registered service: {service_key} with lifecycle {lifecycle}")
+        try:
+            service_key = self._get_service_key(service_type)
+            
+            self._registrations[service_key] = {
+                "type": service_type,
+                "implementation": implementation,
+                "lifecycle": lifecycle,
+                "factory": factory
+            }
+            
+            self._logger.debug(f"Registered service: {service_key} with lifecycle {lifecycle}")
+        except Exception as e:
+            raise ServiceRegistrationException(
+                service_type=self._get_service_name(service_type),
+                message=f"Failed to register service {service_type}",
+                context={
+                    "service_type": str(service_type),
+                    "implementation": str(implementation) if implementation else "None",
+                    "lifecycle": lifecycle
+                },
+                cause=e
+            )
 
     def register_core_services(self, context) -> None:
         """
@@ -90,11 +108,71 @@ class DIContainer:
             #     self.register(ConfigManagerInterface, ConfigManagerAdapter(context.config_manager))
             #     self._logger.debug("Registered core config manager service")
                 
+        except ServiceRegistrationException:
+            # Re-raise service registration exceptions
+            raise
         except Exception as e:
             self._logger.warning(f"Failed to register some core services: {e}")
             # Don't re-raise to maintain backward compatibility
 
     def resolve(self, service_type: Type) -> Any:
+        """
+        Resolve a service from the container.
+
+        Args:
+            service_type: The type (interface) of the service to resolve
+
+        Returns:
+            The resolved service instance
+
+        Raises:
+            ServiceNotFoundError: If the service is not registered
+        """
+        try:
+            service_key = self._get_service_key(service_type)
+            
+            if service_key not in self._registrations:
+                raise ServiceNotFoundError(f"Service {service_key} not found in container")
+                
+            registration = self._registrations[service_key]
+            
+            # Check if we already have a singleton instance
+            if registration["lifecycle"] == ServiceLifeCycle.SINGLETON and service_key in self._services:
+                return self._services[service_key]
+                
+            # Create the service instance
+            instance = self._create_instance(registration)
+            
+            # Store singleton instances
+            if registration["lifecycle"] == ServiceLifeCycle.SINGLETON:
+                self._services[service_key] = instance
+                
+            return instance
+        except ServiceNotFoundError:
+            # Re-raise service not found errors as ServiceResolutionException
+            service_name = self._get_service_name(service_type)
+            raise ServiceResolutionException(
+                service_type=service_name,
+                message=f"Service {service_name} not found in container",
+                context={
+                    "service_type": str(service_type),
+                    "service_key": self._get_service_key(service_type) if 'service_type' in locals() else "unknown"
+                }
+            )
+        except ServiceResolutionException:
+            # Re-raise service resolution exceptions
+            raise
+        except Exception as e:
+            service_name = self._get_service_name(service_type)
+            raise ServiceResolutionException(
+                service_type=service_name,
+                message=f"Failed to resolve service {service_name}",
+                context={
+                    "service_type": str(service_type),
+                    "service_key": self._get_service_key(service_type) if 'service_type' in locals() else "unknown"
+                },
+                cause=e
+            )
         """
         Resolve a service from the container.
 
@@ -131,19 +209,37 @@ class DIContainer:
         """Generate a unique key for a service type."""
         return f"{service_type.__module__}.{service_type.__name__}"
 
+    def _get_service_name(self, service_type: Type) -> str:
+        """Get a human-readable name for a service type."""
+        return f"{service_type.__module__}.{service_type.__name__}"
+
     def _create_instance(self, registration: Dict[str, Any]) -> Any:
         """Create an instance of a service based on its registration."""
-        if registration["factory"]:
-            return registration["factory"](self)
-        elif registration["implementation"]:
-            impl = registration["implementation"]
-            # If it's a class, instantiate it with dependency injection
-            if isinstance(impl, type):
-                return self._inject_dependencies(impl)
-            # If it's already an instance, return it
-            return impl
-        else:
-            raise ServiceNotFoundError("No implementation or factory provided for service")
+        try:
+            if registration["factory"]:
+                return registration["factory"](self)
+            elif registration["implementation"]:
+                impl = registration["implementation"]
+                # If it's a class, instantiate it with dependency injection
+                if isinstance(impl, type):
+                    return self._inject_dependencies(impl)
+                # If it's already an instance, return it
+                return impl
+            else:
+                raise ServiceNotFoundError("No implementation or factory provided for service")
+        except Exception as e:
+            service_type = registration.get("type", "Unknown")
+            service_name = self._get_service_name(service_type) if service_type != "Unknown" else "Unknown"
+            raise ServiceResolutionException(
+                service_type=service_name,
+                message=f"Failed to create instance of service {service_name}",
+                context={
+                    "service_type": str(service_type),
+                    "has_factory": registration["factory"] is not None if "factory" in registration else False,
+                    "has_implementation": registration["implementation"] is not None if "implementation" in registration else False
+                },
+                cause=e
+            )
 
     def _inject_dependencies(self, cls: Type) -> Any:
         """Inject dependencies into a class constructor."""
@@ -175,10 +271,19 @@ class DIContainer:
             
             # Create instance with resolved dependencies
             return cls(**dependencies)
+        except ServiceNotFoundError:
+            # Re-raise service not found errors
+            raise
         except Exception as e:
-            self._logger.warning(f"Failed to inject dependencies for {cls.__name__}, creating instance without injection: {e}")
-            # Fallback to creating instance without injection
-            return cls()
+            class_name = cls.__name__ if hasattr(cls, '__name__') else str(cls)
+            raise DependencyInjectionException(
+                target_type=class_name,
+                message=f"Failed to inject dependencies for {class_name}",
+                context={
+                    "target_class": class_name,
+                },
+                cause=e
+            )
 
     def clear(self) -> None:
         """Clear all singleton instances from the container."""

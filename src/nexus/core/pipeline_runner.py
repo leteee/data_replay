@@ -40,8 +40,13 @@ class PipelineRunner:
         # Use DI container for logger if available, otherwise use direct injection
         try:
             self._logger = container.resolve(LoggerInterface)
-        except Exception:
+        except ServiceNotFoundError:
+            # This is expected if the service is not registered
             self._logger = context.logger
+        except Exception as e:
+            # Log unexpected errors but continue with direct injection
+            self._logger = context.logger
+            self._logger.warning(f"Unexpected error resolving logger from DI container: {e}")
         plugin_modules = self._context.run_config.get("plugin_modules", [])
         if not plugin_modules:
             self._logger.warning("No 'plugin_modules' defined in config. No plugins will be loaded.")

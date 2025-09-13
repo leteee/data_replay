@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from nexus.core.di import container, DIContainer, LoggerInterface, DataHubInterface
+from nexus.core.di.exceptions import ServiceResolutionException
 from nexus.core.di.adapters import LoggerAdapter, DataHubAdapter
 from nexus.core.data.hub import DataHub
 
@@ -98,9 +99,29 @@ def test_bulk_service_registration():
     print("Bulk service registration test passed!")
 
 
+def test_enhanced_error_handling():
+    """Test enhanced error handling in the DI container."""
+    # Create a test container
+    test_container = DIContainer()
+    
+    # Test ServiceResolutionException
+    try:
+        # Try to resolve a service that is not registered
+        test_container.resolve(logging.Logger)
+        assert False, "Expected ServiceResolutionException was not raised"
+    except ServiceResolutionException as e:
+        print(f"ServiceResolutionException caught as expected: {e}")
+        assert "logging.Logger" in e.service_type
+    except Exception as e:
+        assert False, f"Wrong exception type: {type(e)} - {e}"
+    
+    print("Enhanced error handling test passed!")
+
+
 if __name__ == "__main__":
     test_di_container_integration()
     test_singleton_lifecycle_integration()
     test_global_container_functionality()
     test_bulk_service_registration()
+    test_enhanced_error_handling()
     print("All DI integration tests passed!")
