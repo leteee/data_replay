@@ -201,6 +201,30 @@ This section documents additional refactoring opportunities that can further enh
   container.register_core_services(nexus_context)
   ```
 
+#### 2. Enhanced Error Handling (Completed)
+- **Issue**: Overly broad exception handling with limited diagnostic information
+- **Solution**: Implemented custom exception hierarchy with detailed context and improved error reporting
+- **Impact**: Better debugging experience and more precise error handling
+- **Example**:
+  ```python
+  # Before: Generic exception handling
+  try:
+      self._logger = container.resolve(LoggerInterface)
+  except Exception:
+      self._logger = context.logger
+  
+  # After: Precise exception handling with context
+  try:
+      self._logger = container.resolve(LoggerInterface)
+  except ServiceNotFoundError:
+      # This is expected if the service is not registered
+      self._logger = context.logger
+  except Exception as e:
+      # Log unexpected errors but continue with direct injection
+      self._logger = context.logger
+      self._logger.warning(f"Unexpected error resolving logger from DI container: {e}")
+  ```
+
 ### Dependency Injection System Improvements
 
 #### 1. Enhanced Error Handling
