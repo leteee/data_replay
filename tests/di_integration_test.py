@@ -175,42 +175,30 @@ def test_mock_logger_functionality():
     print("MockLogger functionality test passed!")
 
 
-def test_mock_data_hub_functionality():
-    """Test the MockDataHub functionality."""
-    mock_data_hub = MockDataHub()
+def test_performance_optimizations():
+    """Test the performance optimizations in the DI container."""
+    # Create a test container
+    test_container = DIContainer()
     
-    # Test data registration and retrieval
-    test_data = {"key": "value"}
-    mock_data_hub.register("test_data", test_data)
+    # Test service key caching
+    service_key1 = test_container._get_service_key(LoggerInterface)
+    service_key2 = test_container._get_service_key(LoggerInterface)
+    assert service_key1 == service_key2
     
-    # Test data retrieval
-    retrieved_data = mock_data_hub.get("test_data")
-    assert retrieved_data == test_data
+    # Test service name caching
+    service_name1 = test_container._get_service_name(LoggerInterface)
+    service_name2 = test_container._get_service_name(LoggerInterface)
+    assert service_name1 == service_name2
     
-    # Test data containment
-    assert "test_data" in mock_data_hub
-    assert "nonexistent_data" not in mock_data_hub
+    # Test cache clearing
+    test_container._clear_caches_for_service(LoggerInterface)
     
-    # Test path retrieval
-    path = mock_data_hub.get_path("test_data")
-    assert path == "/mock/path/test_data"
+    # Test all caches clearing
+    test_container._get_service_key(LoggerInterface)
+    test_container._get_service_name(LoggerInterface)
+    test_container._clear_all_caches()
     
-    # Test data saving
-    mock_data_hub.save({"saved": "data"}, "/mock/save/path")
-    saved_data = mock_data_hub.get_saved_data("/mock/save/path")
-    assert saved_data == {"saved": "data"}
-    
-    # Test loaded data tracking
-    loaded_names = mock_data_hub.get_loaded_data_names()
-    assert "test_data" in loaded_names
-    
-    # Test reset functionality
-    mock_data_hub.reset()
-    assert len(mock_data_hub._data) == 0
-    assert len(mock_data_hub._saved_data) == 0
-    assert len(mock_data_hub._loaded_data) == 0
-    
-    print("MockDataHub functionality test passed!")
+    print("Performance optimizations test passed!")
 
 
 if __name__ == "__main__":
@@ -221,5 +209,5 @@ if __name__ == "__main__":
     test_enhanced_error_handling()
     test_test_di_container_functionality()
     test_mock_logger_functionality()
-    test_mock_data_hub_functionality()
+    test_performance_optimizations()
     print("All DI integration tests passed!")

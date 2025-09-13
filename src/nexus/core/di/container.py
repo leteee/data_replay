@@ -6,6 +6,8 @@ from typing import Any, Dict, Type, Callable, Optional, get_type_hints
 from abc import ABC, abstractmethod
 import logging
 import inspect
+import weakref
+from functools import lru_cache
 
 from .exceptions import (
     ServiceResolutionException, 
@@ -35,6 +37,13 @@ class DIContainer:
         self._services: Dict[str, Any] = {}
         self._registrations: Dict[str, Dict[str, Any]] = {}
         self._logger = logging.getLogger(__name__)
+        
+        # Performance optimization: Cache service keys
+        self._service_key_cache: Dict[Type, str] = {}
+        self._service_name_cache: Dict[Type, str] = {}
+        
+        # Performance optimization: Cache constructor signatures
+        self._constructor_signature_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
     def register(
         self,
@@ -61,6 +70,9 @@ class DIContainer:
                 "lifecycle": lifecycle,
                 "factory": factory
             }
+            
+            # Clear cache when registering new services
+            self._clear_caches_for_service(service_type)
             
             self._logger.debug(f"Registered service: {service_key} with lifecycle {lifecycle}")
         except Exception as e:
@@ -206,12 +218,42 @@ class DIContainer:
         return instance
 
     def _get_service_key(self, service_type: Type) -> str:
-        """Generate a unique key for a service type."""
-        return f"{service_type.__module__}.{service_type.__name__}"
+        """Generate a unique key for a service type with caching."""
+        if service_type in self._service_key_cache:
+            return self._service_key_cache[service_type]
+        
+        key = f"{service_type.__module__}.{service_type.__name__}"
+        self._service_key_cache[service_type] = key
+        return key
 
     def _get_service_name(self, service_type: Type) -> str:
-        """Get a human-readable name for a service type."""
-        return f"{service_type.__module__}.{service_type.__name__}"
+        """Get a human-readable name for a service type with caching."""
+        if service_type in self._service_name_cache:
+            return self._service_name_cache[service_type]
+        
+        name = f"{service_type.__module__}.{service_type.__name__}"
+        self._service_name_cache[service_type] = name
+        return name
+
+    def _clear_caches_for_service(self, service_type: Type) -> None:
+        """Clear caches when a service is registered or modified."""
+        self._service_key_cache.pop(service_type, None)
+        self._service_name_cache.pop(service_type, None)
+
+    def _clear_all_caches(self) -> None:
+        """Clear all caches."""
+        self._service_key_cache.clear()
+        self._service_name_cache.clear()
+        self._constructor_signature_cache.clear()
+
+    def _get_constructor_signature_cached(self, cls: Type):
+        """Get constructor signature with caching."""
+        if cls in self._constructor_signature_cache:
+            return self._constructor_signature_cache[cls]
+        
+        sig = inspect.signature(cls.__init__)
+        self._constructor_signature_cache[cls] = sig
+        return sig
 
     def _create_instance(self, registration: Dict[str, Any]) -> Any:
         """Create an instance of a service based on its registration."""
@@ -242,10 +284,10 @@ class DIContainer:
             )
 
     def _inject_dependencies(self, cls: Type) -> Any:
-        """Inject dependencies into a class constructor."""
+        """Inject dependencies into a class constructor with performance optimizations."""
         try:
-            # Get the constructor signature
-            sig = inspect.signature(cls.__init__)
+            # Get the constructor signature with caching
+            sig = self._get_constructor_signature_cached(cls)
             params = dict(sig.parameters)
             params.pop('self', None)  # Remove 'self' parameter
             
@@ -288,7 +330,8 @@ class DIContainer:
     def clear(self) -> None:
         """Clear all singleton instances from the container."""
         self._services.clear()
-        self._logger.debug("Cleared all singleton instances from container")
+        self._clear_all_caches()
+        self._logger.debug("Cleared all singleton instances and caches from container")
 
 
 # Global container instance
