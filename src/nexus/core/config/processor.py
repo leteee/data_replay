@@ -7,7 +7,7 @@ import logging
 import inspect
 from copy import deepcopy
 from pathlib import Path
-from .config_manager import ConfigManager, load_yaml
+from .manager import ConfigManager, load_yaml
 
 logger = logging.getLogger(__name__)
 
