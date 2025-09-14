@@ -15,6 +15,27 @@ creating a visual representation of the EKF predictions.
 **Core Dependencies Injected:**
 `PluginContext`
 
+**Configuration Parameters (from Pydantic Model):**
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `video_manifest` | `DataFrame` | `PydanticUndefined` |  |
+| `predicted_states` | `DataFrame` | `PydanticUndefined` |  |
+| `rendered_frames_dir` | `Path` | `PydanticUndefined` |  |
+| `zoom_factor` | `float` | `5.0` |  |
+| `circle_radius_px` | `int` | `15` |  |
+| `circle_width_px` | `int` | `3` |  |
+| `viewport_width` | `int` | `1920` |  |
+| `viewport_height` | `int` | `1080` |  |
+
+**Data Sources:**
+
+| Field Name | Logical Name | Type | Description |
+|------------|--------------|------|-------------|
+| `video_manifest` | `video_manifest` | `DataFrame` | Data input source |
+| `predicted_states` | `predicted_states` | `DataFrame` | Data input source |
+| `rendered_frames_dir` | `rendered_frames` | `Path` | Data input source |
+
 ### Latency Compensator
 
 Compensates for a fixed latency in measurement data by predicting the state
@@ -24,12 +45,47 @@ Rate and Velocity (CTRV) model.
 **Core Dependencies Injected:**
 `PluginContext`
 
+**Configuration Parameters (from Pydantic Model):**
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `measurements` | `DataFrame` | `PydanticUndefined` |  |
+| `predicted_states` | `Optional` | `None` |  |
+| `latency_to_compensate_s` | `float` | `0.2` |  |
+| `measurement_noise_pos` | `float` | `0.5` |  |
+| `measurement_noise_vel` | `float` | `0.8` |  |
+| `measurement_noise_yaw` | `float` | `0.5` |  |
+| `process_noise_std_pos` | `float` | `0.5` |  |
+| `process_noise_std_vel` | `float` | `0.8` |  |
+| `process_noise_std_yaw` | `float` | `0.5` |  |
+| `process_noise_std_yaw_rate` | `float` | `0.3` |  |
+
+**Data Sources:**
+
+| Field Name | Logical Name | Type | Description |
+|------------|--------------|------|-------------|
+| `measurements` | `latent_measurements` | `DataFrame` | Data input source |
+
 ### Video Creator
 
 Creates a video from a sequence of image frames.
 
 **Core Dependencies Injected:**
 `PluginContext`
+
+**Configuration Parameters (from Pydantic Model):**
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `rendered_frames_dir` | `Path` | `PydanticUndefined` |  |
+| `replay_video` | `Optional` | `None` |  |
+| `fps` | `int` | `10` | Frames per second for the output video. |
+
+**Data Sources:**
+
+| Field Name | Logical Name | Type | Description |
+|------------|--------------|------|-------------|
+| `rendered_frames_dir` | `rendered_frames` | `Path` | Data input source |
 
 ---
 ## Data Handlers
