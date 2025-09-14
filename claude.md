@@ -3,6 +3,7 @@
 - **Built on Best Practices**: From the high-level architecture to the low-level implementation, the project strictly follows industry-recognized mainstream best practices.
 - **High Modularity & Flexibility**: The core of the framework is a pluggable, loosely coupled plugin architecture, pursuing ultimate flexibility and scalability.
 - **Think Step by Step**: The AI assistant must employ a structured, step-by-step reasoning process for analysis and problem-solving.
+- **Pythonic**: All code must follow Pythonic principles, emphasizing readability, simplicity, and the use of Python's idiomatic features.
 
 # 2. Key Architectural Mechanisms (Refactoring in Progress)
 
