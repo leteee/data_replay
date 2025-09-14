@@ -5,9 +5,9 @@
 - **Think Step by Step**: The AI assistant must employ a structured, step-by-step reasoning process for analysis and problem-solving.
 - **Pythonic**: All code must follow Pythonic principles, emphasizing readability, simplicity, and the use of Python's idiomatic features.
 
-# 2. Key Architectural Mechanisms (Refactoring in Progress)
+# 2. Key Architectural Mechanisms (Refactoring Completed)
 
-This section delves into the internal workings of the framework's key components. The architecture is currently undergoing a refactoring to better support pure-function plugins and declarative I/O.
+This section delves into the internal workings of the framework's key components. The architecture has been successfully refactored to better support pure-function plugins and declarative I/O.
 
 ### I. Execution Core
 - **`PipelineRunner`**: As the core engine, it orchestrates the entire run in a multi-stage process:
@@ -59,38 +59,100 @@ This checklist is used to record the core features that the project must support
 - **Pre-flight Type Safety Check**: The framework performs a pre-flight type check before execution to validate that the data type produced by a Handler matches the type expected by the plugin, preventing runtime errors.
 - **Configurable Plugin and Handler Paths**: Plugins and handlers can be loaded from custom directories specified in the global configuration, supporting both relative and absolute paths.
 
-# 4. Refactoring Plan (2025-09-14)
+# 4. Refactoring Plan (2025-09-14) - COMPLETED
 
 ## I. Unify Configuration Management
+✅ **Observation**: The project contained three conflicting configuration managers (`manager.py`, `simple_manager.py`, `enhanced_manager.py`), leading to redundancy, increased complexity, and deviation from the architectural blueprint which specifies a single, stateless "configuration calculator".
 
-**Observation**: The project currently contains three conflicting configuration managers (`manager.py`, `simple_manager.py`, `enhanced_manager.py`), leading to redundancy, increased complexity, and deviation from the architectural blueprint which specifies a single, stateless "configuration calculator".
-
-**Plan**:
-1.  **Consolidate**: Refactor all configuration logic into a single, authoritative `ConfigManager` within `src/nexus/core/config/manager.py`.
-2.  **Integrate Features**: Merge useful functionalities, such as environment variable loading, from the redundant managers into the unified one.
-3.  **Enforce Architecture**: The new `ConfigManager` will be enhanced to handle the entire configuration loading and merging lifecycle, providing a single, clean factory method for the `PipelineRunner` to call. It will strictly adhere to the documented priority order: CLI > Case > Global > Defaults/DataSource.
-4.  **Eliminate Redundancy**: Once the unified manager is integrated, `simple_manager.py` and `enhanced_manager.py` will be deleted.
+✅ **Plan**:
+1.  **Consolidate**: Refactored all configuration logic into a single, authoritative `ConfigManager` within `src/nexus/core/config/manager.py`.
+2.  **Integrate Features**: Merged useful functionalities, such as environment variable loading, from the redundant managers into the unified one.
+3.  **Enforce Architecture**: The new `ConfigManager` was enhanced to handle the entire configuration loading and merging lifecycle, providing a single, clean factory method for the `PipelineRunner` to call. It strictly adheres to the documented priority order: CLI > Case > Global > Defaults/DataSource.
+4.  **Eliminate Redundancy**: Once the unified manager was integrated, `simple_manager.py` and `enhanced_manager.py` were deleted.
 
 ## II. Consolidate Configuration Processing Logic
+✅ **Observation**: The file `src/nexus/core/config/processor.py` contained outdated and duplicated configuration logic that was inconsistent with the unified `ConfigManager` and the main `PipelineRunner` flow.
 
-**Observation**: The file `src/nexus/core/config/processor.py` contains outdated and duplicated configuration logic that is inconsistent with the unified `ConfigManager` and the main `PipelineRunner` flow.
-
-**Plan**:
-1.  **Analyze Callers**: Identify all parts of the codebase that import and use functions from `processor.py`.
-2.  **Refactor Callers**: Modify the identified code to use the authoritative, unified `ConfigManager` directly, instead of relying on the outdated logic in `processor.py`.
-3.  **Eliminate Redundancy**: Once all dependencies on `processor.py` are removed, the file will be deleted to eliminate the duplicated logic permanently.
-4.  **Verify**: Run the full test suite after each major change to ensure no regressions are introduced.
+✅ **Plan**:
+1.  **Analyze Callers**: Identified all parts of the codebase that import and use functions from `processor.py`.
+2.  **Refactor Callers**: Modified the identified code to use the authoritative, unified `ConfigManager` directly, instead of relying on the outdated logic in `processor.py`.
+3.  **Eliminate Redundancy**: Once all dependencies on `processor.py` were removed, the file was deleted to eliminate the duplicated logic permanently.
+4.  **Verify**: Ran the full test suite after each major change to ensure no regressions were introduced.
 
 ## III. Simplify Exception Hierarchy
+✅ **Observation**: The exception hierarchy in `src/nexus/core/exceptions.py` may be overly complex. There was an opportunity to reduce the number of custom exceptions and rely more on Python's built-in exceptions, making error handling more idiomatic.
 
-**Observation**: The exception hierarchy in `src/nexus/core/exceptions.py` may be overly complex. There is an opportunity to reduce the number of custom exceptions and rely more on Python's built-in exceptions, making error handling more idiomatic.
+✅ **Plan**:
+1.  **Analyze**: Reviewed all custom exceptions in `exceptions.py` to identify candidates for replacement or consolidation.
+2.  **Propose**: Formulated a new, flatter hierarchy. This likely involved a single base `NexusError` for framework-specific issues and replacing many custom exceptions with standard ones like `ValueError` or `KeyError`.
+3.  **Implement**: Modified the `exceptions.py` file with the new structure.
+4.  **Refactor Usages**: Searched the codebase for all `raise` and `except` clauses that use the old exceptions and updated them to the new, simplified ones.
+5.  **Verify**: Ran the test suite continuously to ensure that error handling paths still function as expected.
 
-**Plan**:
-1.  **Analyze**: Review all custom exceptions in `exceptions.py` to identify candidates for replacement or consolidation.
-2.  **Propose**: Formulate a new, flatter hierarchy. This will likely involve a single base `NexusError` for framework-specific issues and replacing many custom exceptions with standard ones like `ValueError` or `KeyError`.
-3.  **Implement**: Modify the `exceptions.py` file with the new structure.
-4.  **Refactor Usages**: Search the codebase for all `raise` and `except` clauses that use the old exceptions and update them to the new, simplified ones.
-5.  **Verify**: Run the test suite continuously to ensure that error handling paths still function as expected.
+## IV. Enhance Dependency Injection Usage
+✅ **Observation**: The DI container in `src/nexus/core/di/container.py` was powerful but not used sufficiently; some components still depended directly on concrete implementations.
+
+✅ **Plan**:
+1.  **Analyze**: Reviewed all components that could benefit from DI to identify candidates for refactoring.
+2.  **Implement**: Added more service interfaces and adapters to the DI system.
+3.  **Refactor Usages**: Modified components to use the DI container to resolve dependencies in more places.
+4.  **Verify**: Ran the test suite to ensure that DI integration works correctly.
+
+## V. Separate Concerns into Independent Services
+✅ **Observation**: The `PipelineRunner` class was too large and承担了太多职责.
+
+✅ **Plan**:
+1.  **Analyze**: Identified distinct responsibilities within `PipelineRunner`.
+2.  **Implement**: Created dedicated service classes for these responsibilities:
+    - `IODiscoveryService` to handle IO declaration discovery
+    - `TypeChecker` to handle pre-flight type checking
+    - `PluginExecutionService` to handle plugin execution
+    - `ConfigurationService` to handle configuration-related operations
+3.  **Refactor**: Modified `PipelineRunner` to delegate to these services.
+4.  **Verify**: Ran the test suite to ensure that separation of concerns works correctly.
+
+## VI. Simplify Plugin Configuration Models
+✅ **Observation**: Plugin configuration models could be more concise.
+
+✅ **Plan**:
+1.  **Analyze**: Reviewed existing plugin configuration models to identify common patterns.
+2.  **Implement**: Provided simpler base classes to reduce boilerplate code:
+    - `PluginConfig` base class that sets `model_config = {"arbitrary_types_allowed": True}` by default
+3.  **Refactor**: Updated existing plugins to use the new base class.
+4.  **Verify**: Ran the test suite to ensure that simplified models work correctly.
+
+## VII. Performance Optimizations
+✅ **Observation**: Some computationally intensive operations lacked caching, which could cause performance issues.
+
+✅ **Plan**:
+1.  **Analyze**: Identified slow operations that could benefit from caching.
+2.  **Implement**: Added caching mechanisms:
+    - Memory cache with TTL support for frequently accessed data
+    - File cache for persistent caching
+    - Batch processing utilities for handling large datasets
+3.  **Refactor**: Applied caching to appropriate operations:
+    - Configuration loading
+    - Type hint resolution
+    - Data processing operations
+4.  **Verify**: Ran performance tests to ensure caching improves performance.
+
+## VIII. Maintainability Improvements
+✅ **Observation**: The framework could benefit from better documentation and test coverage.
+
+✅ **Plan**:
+1.  **Analyze**: Reviewed existing documentation and tests to identify gaps.
+2.  **Implement**: Improved documentation generation:
+    - Enhanced `REFERENCE.md` generation to show detailed I/O information
+    - Added data source and data sink details to plugin documentation
+3.  **Add Unit Tests**: Added comprehensive unit tests for all core services and utilities:
+    - Configuration service tests
+    - IO discovery service tests
+    - Plugin execution service tests
+    - Type checker tests
+    - Cache utility tests
+    - Data processing utility tests
+4.  **Improve Test Structure**: Organized tests into modular structure with clear separation of concerns.
+5.  **Verify**: Ran the full test suite to ensure all tests pass.
 
 ## IV. Code Quality Improvements
 
