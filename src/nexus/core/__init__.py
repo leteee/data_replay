@@ -6,22 +6,9 @@ the foundation of the framework.
 """
 
 from .exceptions import (
-    BaseFrameworkException,
-    ConfigurationException,
-    InvalidConfigurationException,
-    MissingConfigurationException,
-    DataException,
-    DataSourceException,
-    DataSinkException,
-    DataHandlerException,
-    PluginException,
-    PluginNotFoundException,
-    PluginExecutionException,
-    PluginConfigurationException,
-    ValidationException,
-    FrameworkException,
-    InitializationException,
-    ExecutionContextException
+    NexusError,
+    ConfigurationError,
+    PluginError
 )
 
 from .exception_handler import (
@@ -32,22 +19,9 @@ from .exception_handler import (
 
 __all__ = [
     # Exceptions
-    'BaseFrameworkException',
-    'ConfigurationException',
-    'InvalidConfigurationException',
-    'MissingConfigurationException',
-    'DataException',
-    'DataSourceException',
-    'DataSinkException',
-    'DataHandlerException',
-    'PluginException',
-    'PluginNotFoundException',
-    'PluginExecutionException',
-    'PluginConfigurationException',
-    'ValidationException',
-    'FrameworkException',
-    'InitializationException',
-    'ExecutionContextException',
+    'NexusError',
+    'ConfigurationError',
+    'PluginError',
     
     # Exception Handler
     'GlobalExceptionHandler',

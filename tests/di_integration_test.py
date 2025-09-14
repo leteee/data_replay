@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from nexus.core.di import container, DIContainer, LoggerInterface, DataHubInterface
-from nexus.core.di.exceptions import ServiceResolutionException
+from nexus.core.di.exceptions import DIException
 from nexus.core.di.testing import TestDIContainer, MockLogger, MockDataHub
 from nexus.core.di.adapters import LoggerAdapter, DataHubAdapter
 from nexus.core.data.hub import DataHub
@@ -110,8 +110,8 @@ def test_enhanced_error_handling():
     try:
         # Try to resolve a service that is not registered
         test_container.resolve(logging.Logger)
-        assert False, "Expected ServiceResolutionException was not raised"
-    except ServiceResolutionException as e:
+        assert False, "Expected DIException was not raised"
+    except DIException as e:
         print(f"ServiceResolutionException caught as expected: {e}")
         assert "logging.Logger" in e.service_type
     except Exception as e:

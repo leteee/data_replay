@@ -8,15 +8,15 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
+from nexus.core.plugin.base import PluginConfig
 from nexus.core.plugin.decorator import plugin
 from nexus.core.plugin.typing import DataSource
 from nexus.core.context import PluginContext
+from nexus.core.utils.data_processing import batch_process
 
 
-class FrameRendererConfig(BaseModel):
+class FrameRendererConfig(PluginConfig):
     """Configuration model for the Frame Renderer plugin."""
-    # Needed to allow DataFrame and Path fields
-    model_config = {"arbitrary_types_allowed": True}
     
     # --- Data Dependencies ---
     video_manifest: Annotated[
@@ -70,62 +70,82 @@ def render_frames(context: PluginContext) -> None:
 
     logger.info(f"Rendering {len(merged_df)} frames...")
 
-    # --- Main Rendering Loop ---
-    for i, row in merged_df.iterrows():
-        if pd.isna(row.get('image_path')) or pd.isna(row.get('predicted_x')) or pd.isna(row.get('true_x')):
-            continue
+    # --- Main Rendering Loop (Optimized with Batch Processing) ---
+    # Convert DataFrame rows to list for batch processing
+    rows_list = [row for _, row in merged_df.iterrows() 
+                 if not (pd.isna(row.get('image_path')) or pd.isna(row.get('predicted_x')) or pd.isna(row.get('true_x')))]
+    
+    logger.info(f"Rendering {len(rows_list)} frames...")
+    
+    # Process frames in batches
+    def render_frame_batch(rows_batch):
+        for row in rows_batch:
+            _render_single_frame(row, config)
+        return len(rows_batch)
+    
+    # Use batch processing for better performance
+    batch_results = batch_process(
+        items=[rows_list[i:i+10] for i in range(0, len(rows_list), 10)],  # Process in batches of 10
+        process_func=render_frame_batch,
+        batch_size=1,
+        n_workers=min(4, max(1, len(rows_list) // 20))  # Adjust workers based on workload
+    )
+    
+    total_rendered = sum(batch_results) if batch_results else 0
+    logger.info(f"Finished rendering {total_rendered} frames to {config.rendered_frames_dir}")
 
-        img = Image.new('RGB', (config.viewport_width, config.viewport_height), color='black')
-        draw = ImageDraw.Draw(img)
 
-        # --- Dynamic Camera Logic ---
-        cam_world_x, cam_world_y = row['true_x'], row['true_y']
-        viewport_width, viewport_height = img.size
+def _render_single_frame(row, config):
+    """Render a single frame from a DataFrame row."""
+    img = Image.new('RGB', (config.viewport_width, config.viewport_height), color='black')
+    draw = ImageDraw.Draw(img)
 
-        def world_to_camera(world_x, world_y):
-            relative_x = (world_x - cam_world_x) * config.zoom_factor
-            relative_y = (world_y - cam_world_y) * config.zoom_factor
-            return (relative_x + viewport_width / 2, relative_y + viewport_height / 2)
+    # --- Dynamic Camera Logic ---
+    cam_world_x, cam_world_y = row['true_x'], row['true_y']
+    viewport_width, viewport_height = img.size
 
-        # --- Draw Pseudo Grid Lines (Latitude/Longitude) ---
-        # Draw grid lines every 10 world units
-        grid_spacing_world = 10.0
-        grid_color = (50, 50, 50)  # Dark gray
-        
-        # Calculate the range of grid lines to draw based on zoom factor and viewport size
-        half_width_world = (viewport_width / 2) / config.zoom_factor
-        half_height_world = (viewport_height / 2) / config.zoom_factor
-        
-        # Determine the range of grid lines to draw
-        min_grid_x = int((cam_world_x - half_width_world) / grid_spacing_world) * grid_spacing_world
-        max_grid_x = int((cam_world_x + half_width_world) / grid_spacing_world) * grid_spacing_world
-        min_grid_y = int((cam_world_y - half_height_world) / grid_spacing_world) * grid_spacing_world
-        max_grid_y = int((cam_world_y + half_height_world) / grid_spacing_world) * grid_spacing_world
-        
-        # Draw vertical grid lines (longitude)
-        for x in np.arange(min_grid_x, max_grid_x + grid_spacing_world, grid_spacing_world):
-            x_cam, _ = world_to_camera(x, cam_world_y)
-            draw.line([(x_cam, 0), (x_cam, viewport_height)], fill=grid_color, width=1)
-        
-        # Draw horizontal grid lines (latitude)
-        for y in np.arange(min_grid_y, max_grid_y + grid_spacing_world, grid_spacing_world):
-            _, y_cam = world_to_camera(cam_world_x, y)
-            draw.line([(0, y_cam), (viewport_width, y_cam)], fill=grid_color, width=1)
+    def world_to_camera(world_x, world_y):
+        relative_x = (world_x - cam_world_x) * config.zoom_factor
+        relative_y = (world_y - cam_world_y) * config.zoom_factor
+        return (relative_x + viewport_width / 2, relative_y + viewport_height / 2)
 
-        # --- Draw Grid and Data Points ---
-        radius = config.circle_radius_px
-        width = config.circle_width_px
-        
-        gx_cam, gy_cam = world_to_camera(row['true_x'], row['true_y'])
-        draw.ellipse([(gx_cam - radius, gy_cam - radius), (gx_cam + radius, gy_cam + radius)], outline='#28a745', width=width)
+    # --- Draw Pseudo Grid Lines (Latitude/Longitude) ---
+    # Draw grid lines every 10 world units
+    grid_spacing_world = 10.0
+    grid_color = (50, 50, 50)  # Dark gray
+    
+    # Calculate the range of grid lines to draw based on zoom factor and viewport size
+    half_width_world = (viewport_width / 2) / config.zoom_factor
+    half_height_world = (viewport_height / 2) / config.zoom_factor
+    
+    # Determine the range of grid lines to draw
+    min_grid_x = int((cam_world_x - half_width_world) / grid_spacing_world) * grid_spacing_world
+    max_grid_x = int((cam_world_x + half_width_world) / grid_spacing_world) * grid_spacing_world
+    min_grid_y = int((cam_world_y - half_height_world) / grid_spacing_world) * grid_spacing_world
+    max_grid_y = int((cam_world_y + half_height_world) / grid_spacing_world) * grid_spacing_world
+    
+    # Draw vertical grid lines (longitude)
+    for x in np.arange(min_grid_x, max_grid_x + grid_spacing_world, grid_spacing_world):
+        x_cam, _ = world_to_camera(x, cam_world_y)
+        draw.line([(x_cam, 0), (x_cam, viewport_height)], fill=grid_color, width=1)
+    
+    # Draw horizontal grid lines (latitude)
+    for y in np.arange(min_grid_y, max_grid_y + grid_spacing_world, grid_spacing_world):
+        _, y_cam = world_to_camera(cam_world_x, y)
+        draw.line([(0, y_cam), (viewport_width, y_cam)], fill=grid_color, width=1)
 
-        px_cam, py_cam = world_to_camera(row['predicted_x'], row['predicted_y'])
-        draw.ellipse([(px_cam - radius, py_cam - radius), (px_cam + radius, py_cam + radius)], outline='#dc3545', width=width)
+    # --- Draw Grid and Data Points ---
+    radius = config.circle_radius_px
+    width = config.circle_width_px
+    
+    gx_cam, gy_cam = world_to_camera(row['true_x'], row['true_y'])
+    draw.ellipse([(gx_cam - radius, gy_cam - radius), (gx_cam + radius, gy_cam + radius)], outline='#28a745', width=width)
 
-        # --- Save Frame ---
-        image_filename = Path(row['image_path']).name
-        output_frame_path = config.rendered_frames_dir / image_filename
-        
-        img.save(output_frame_path)
+    px_cam, py_cam = world_to_camera(row['predicted_x'], row['predicted_y'])
+    draw.ellipse([(px_cam - radius, py_cam - radius), (px_cam + radius, py_cam + radius)], outline='#dc3545', width=width)
 
-    logger.info(f"Finished rendering frames to {config.rendered_frames_dir}")
+    # --- Save Frame ---
+    image_filename = Path(row['image_path']).name
+    output_frame_path = config.rendered_frames_dir / image_filename
+    
+    img.save(output_frame_path)

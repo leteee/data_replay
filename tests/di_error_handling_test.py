@@ -6,11 +6,7 @@ import logging
 from pathlib import Path
 
 from nexus.core.di import container, DIContainer
-from nexus.core.di.exceptions import (
-    ServiceResolutionException, 
-    ServiceRegistrationException, 
-    DependencyInjectionException
-)
+from nexus.core.di.exceptions import DIException
 from nexus.core.di.container import ServiceNotFoundError
 
 
@@ -23,8 +19,8 @@ def test_enhanced_error_handling():
     try:
         # Try to resolve a service that is not registered
         test_container.resolve(logging.Logger)
-        assert False, "Expected ServiceResolutionException was not raised"
-    except ServiceResolutionException as e:
+        assert False, "Expected DIException was not raised"
+    except DIException as e:
         print(f"ServiceResolutionException caught as expected: {e}")
         assert "logging.Logger" in e.service_type
     except ServiceNotFoundError:
@@ -43,8 +39,8 @@ def test_service_not_found_error():
     try:
         # Try to resolve a non-existent service
         test_container.resolve(str)  # str is unlikely to be registered
-        assert False, "Expected ServiceResolutionException was not raised"
-    except ServiceResolutionException as e:
+        assert False, "Expected DIException was not raised"
+    except DIException as e:
         print(f"ServiceResolutionException properly handles service not found: {e}")
     except ServiceNotFoundError:
         # This is also acceptable

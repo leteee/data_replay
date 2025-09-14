@@ -23,15 +23,49 @@ from nexus.core.plugin.decorator import PLUGIN_REGISTRY
 from nexus.core.plugin.discovery import discover_plugins
 from nexus.core.plugin.executor import PluginExecutor
 from nexus.core.exceptions import (
-    BaseFrameworkException,
-    PluginExecutionException,
-    PluginNotFoundException
+    NexusError,
+    PluginError
 )
 from nexus.core.exception_handler import handle_exception
 
 app = typer.Typer(help="Data Replay Framework CLI")
 
 logger = logging.getLogger(__name__)
+
+
+def _setup_nexus_context(case: str, global_config: dict) -> NexusContext:
+    """Shared function to setup NexusContext for CLI commands."""
+    cases_root_str = global_config.get("cases_root", "cases")
+    cases_root = Path(cases_root_str)
+    if not cases_root.is_absolute():
+        cases_root = (project_root / cases_root).resolve()
+
+    case_arg_path = Path(case)
+    case_path = case_arg_path if case_arg_path.is_absolute() else cases_root / case_arg_path
+
+    if not case_path.is_dir():
+        raise ValueError(f"Case path not found: {case_path}")
+
+    run_config = {
+        "cli_args": {},
+        "plugin_modules": global_config.get("plugin_modules", []),
+        "plugin_paths": global_config.get("plugin_paths", []),
+        "handler_paths": global_config.get("handler_paths", [])
+    }
+
+    nexus_context = NexusContext(
+        project_root=project_root,
+        case_path=case_path,
+        data_hub=None,  # Will be set after creation
+        logger=logger,
+        run_config=run_config
+    )
+    
+    data_hub = DataHub(case_path=case_path, logger=logger, context=nexus_context)
+    nexus_context.data_hub = data_hub
+    
+    return nexus_context
+
 
 def version_callback(value: bool):
     if value:
@@ -57,16 +91,17 @@ def pipeline(
     If --templates is specified, create the case from a template before running.
     """
     global_config = load_yaml(project_root / "config" / "global.yaml")
-    cases_root_str = global_config.get("cases_root", "cases")
-    cases_root = Path(cases_root_str)
-    if not cases_root.is_absolute():
-        cases_root = (project_root / cases_root).resolve()
-
-    case_arg_path = Path(case)
-    case_path = case_arg_path if case_arg_path.is_absolute() else cases_root / case_arg_path
-
+    
     # If templates option is specified, create the case from template
     if templates:
+        cases_root_str = global_config.get("cases_root", "cases")
+        cases_root = Path(cases_root_str)
+        if not cases_root.is_absolute():
+            cases_root = (project_root / cases_root).resolve()
+            
+        case_arg_path = Path(case)
+        case_path = case_arg_path if case_arg_path.is_absolute() else cases_root / case_arg_path
+        
         template_path = project_root / "templates" / f"{templates}_case.yaml"
         if not template_path.exists():
             logger.error(f"Template file not found: {template_path}")
@@ -80,48 +115,31 @@ def pipeline(
         shutil.copy2(template_path, destination_path)
         logger.info(f"Created case '{case}' from template '{templates}' at {destination_path}")
 
-    if not case_path.is_dir():
-        logger.error(f"Case path not found: {case_path}")
-        raise typer.Exit(code=1)
-
-    logger.info(f"====== Running Case: {case_path.name} ======")
-
-    run_config = {
-        "cli_args": {},
-        "plugin_modules": global_config.get("plugin_modules", []),
-        "plugin_paths": global_config.get("plugin_paths", []),
-        "handler_paths": global_config.get("handler_paths", [])
-    }
-
-    nexus_context = NexusContext(
-        project_root=project_root,
-        case_path=case_path,
-        data_hub=None,  # Will be set after creation
-        logger=logger,
-        run_config=run_config
-    )
-    
-    data_hub = DataHub(case_path=case_path, logger=logger, context=nexus_context)
-    nexus_context.data_hub = data_hub
+    logger.info(f"====== Running Case: {case} ======")
 
     try:
+        nexus_context = _setup_nexus_context(case, global_config)
+        
         from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
         runner = PipelineRunnerFactory.create(nexus_context)
         runner.run()
-        logger.info(f"====== Case '{case_path.name}' finished successfully. ======")
-    except BaseFrameworkException as e:
+        logger.info(f"====== Case '{nexus_context.case_path.name}' finished successfully. ======")
+    except NexusError as e:
         handle_exception(e)
         raise typer.Exit(code=1)
     except Exception as e:
         error_context = {
             "command": "pipeline",
-            "case_path": str(case_path)
+            "case": case
         }
-        exc = PluginExecutionException(
-            f"A critical error occurred during pipeline execution: {e}",
-            context=error_context,
-            cause=e
+        exc = PluginError(
+            f"A critical error occurred during pipeline execution: {e}"
         )
+        # Add context to the exception manually since RuntimeError doesn't accept it in constructor
+        if hasattr(exc, 'context'):
+            exc.context.update(error_context)
+        else:
+            exc.context = error_context
         handle_exception(exc, error_context)
         raise typer.Exit(code=1)
 
@@ -135,57 +153,33 @@ def plugin(
     Note: User must ensure all required input data exists before running.
     """
     global_config = load_yaml(project_root / "config" / "global.yaml")
-    cases_root_str = global_config.get("cases_root", "cases")
-    cases_root = Path(cases_root_str)
-    if not cases_root.is_absolute():
-        cases_root = (project_root / cases_root).resolve()
-
-    case_arg_path = Path(case)
-    case_path = case_arg_path if case_arg_path.is_absolute() else cases_root / case_arg_path
-
-    if not case_path.is_dir():
-        logger.error(f"Case path not found: {case_path}")
-        raise typer.Exit(code=1)
-
-    logger.info(f"====== Running Plugin: {name} in Case: {case_path.name} ======")
-
-    run_config = {
-        "cli_args": {},
-        "plugin_modules": global_config.get("plugin_modules", []),
-        "plugin_paths": global_config.get("plugin_paths", []),
-        "handler_paths": global_config.get("handler_paths", [])
-    }
-
-    nexus_context = NexusContext(
-        project_root=project_root,
-        case_path=case_path,
-        data_hub=None,  # Will be set after creation
-        logger=logger,
-        run_config=run_config
-    )
     
-    data_hub = DataHub(case_path=case_path, logger=logger, context=nexus_context)
-    nexus_context.data_hub = data_hub
+    logger.info(f"====== Running Plugin: {name} in Case: {case} ======")
 
     try:
+        nexus_context = _setup_nexus_context(case, global_config)
+        
         from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
         runner = PipelineRunnerFactory.create(nexus_context)
         runner.run(plugin_name=name)
         logger.info(f"====== Plugin '{name}' finished successfully. ======")
-    except BaseFrameworkException as e:
+    except NexusError as e:
         handle_exception(e)
         raise typer.Exit(code=1)
     except Exception as e:
         error_context = {
             "command": "plugin",
             "plugin_name": name,
-            "case_path": str(case_path)
+            "case": case
         }
-        exc = PluginExecutionException(
-            f"A critical error occurred during plugin execution: {e}",
-            context=error_context,
-            cause=e
+        exc = PluginError(
+            f"A critical error occurred during plugin execution: {e}"
         )
+        # Add context to the exception manually since RuntimeError doesn't accept it in constructor
+        if hasattr(exc, 'context'):
+            exc.context.update(error_context)
+        else:
+            exc.context = error_context
         handle_exception(exc, error_context)
         raise typer.Exit(code=1)
 
@@ -198,14 +192,14 @@ def generate_data_cmd():
     try:
         generate_data()
         logger.info("Successfully generated demo data.")
-    except BaseFrameworkException as e:
+    except NexusError as e:
         handle_exception(e)
         raise typer.Exit(code=1)
     except Exception as e:
         error_context = {
             "command": "generate-data"
         }
-        exc = BaseFrameworkException(
+        exc = NexusError(
             f"An error occurred during data generation: {e}",
             context=error_context,
             cause=e
@@ -222,14 +216,14 @@ def docs():
     try:
         generate_plugin_documentation()
         logger.info("Successfully generated framework documentation.")
-    except BaseFrameworkException as e:
+    except NexusError as e:
         handle_exception(e)
         raise typer.Exit(code=1)
     except Exception as e:
         error_context = {
             "command": "docs"
         }
-        exc = BaseFrameworkException(
+        exc = NexusError(
             f"An error occurred during doc generation: {e}",
             context=error_context,
             cause=e

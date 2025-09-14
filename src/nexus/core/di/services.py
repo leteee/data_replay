@@ -73,6 +73,12 @@ class ConfigManagerInterface(ABC):
     def get_plugin_config(self, *, plugin_name: str, case_plugin_config: dict) -> dict:
         pass
 
+    @classmethod
+    @abstractmethod
+    def from_sources(cls, *, project_root: Path, case_path: Path, plugin_registry: Dict[str, Any], 
+                     discovered_data_sources: Dict, cli_args: Dict = None) -> 'ConfigManagerInterface':
+        pass
+
 
 class PluginExecutorInterface(ABC):
     """Interface for plugin execution services."""

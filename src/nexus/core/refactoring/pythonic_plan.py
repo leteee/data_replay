@@ -173,7 +173,10 @@ def benchmark_pythonic_approaches():
     
     print(f"List comprehension: {list_comp_time:.4f}s")
     print(f"Loop: {loop_time:.4f}s")
-    print(f"List comprehension is {loop_time/list_comp_time:.2f}x faster")
+    if list_comp_time > 0:
+        print(f"List comprehension is {loop_time/list_comp_time:.2f}x faster")
+    else:
+        print("List comprehension was too fast to measure a speed difference.")
     
     # Benchmark dict.get() vs try/except
     sample_dict = {f"key_{i}": i for i in range(1000)}

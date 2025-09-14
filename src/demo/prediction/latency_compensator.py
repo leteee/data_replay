@@ -6,17 +6,18 @@ from typing import Annotated, Optional
 
 from pydantic import BaseModel
 
+from nexus.core.plugin.base import PluginConfig
 from nexus.core.plugin.decorator import plugin
 from nexus.core.plugin.typing import DataSource, DataSink
 from nexus.core.context import PluginContext
+from nexus.core.utils.data_processing import vectorize_operations
 
 
-class LatencyCompensatorConfig(BaseModel):
+class LatencyCompensatorConfig(PluginConfig):
     """
     Configuration model for the Latency Compensator plugin.
     It uses Annotated types to declare data sources and sinks.
     """
-    model_config = {"arbitrary_types_allowed": True}
     
     # --- Data Dependencies ---
     # Input: The framework will discover this, load the CSV, and inject a DataFrame.

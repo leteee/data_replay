@@ -633,3 +633,534 @@ sequenceDiagram
 ```
 
 This detailed walkthrough shows how the framework executes from the CLI entry point through all the core components to finally execute the user's plugins with their data dependencies automatically resolved and injected.
+
+# Framework Execution Flow (Detailed Code-Level Analysis)
+
+本文档将帮助您从代码层面理解 Nexus Framework 的运行流程。
+
+## 1. 整体架构
+
+Nexus Framework 采用插件化架构，核心组件包括：
+
+- **CLI (Command Line Interface)**: 用户入口点
+- **PipelineRunner**: 核心执行引擎
+- **ConfigManager**: 配置管理器
+- **DataHub**: 数据中心
+- **Plugin System**: 插件系统
+- **Dependency Injection**: 依赖注入系统
+
+## 2. 运行流程详解
+
+### 2.1 CLI 命令处理流程
+
+当用户执行命令时，程序从 `src/nexus/cli.py` 开始：
+
+```python
+# cli.py
+@app.command()
+def pipeline(
+    case: str = typer.Option(..., "--case", help="Name of the case directory under 'cases/' (e.g., 'demo')"),
+):
+    # 1. 加载全局配置
+    global_config = load_yaml(project_root / "config" / "global.yaml")
+    
+    # 2. 解析案例路径
+    cases_root_str = global_config.get("cases_root", "cases")
+    cases_root = Path(cases_root_str)
+    case_path = resolve_case_path(cases_root, case)
+    
+    # 3. 创建核心上下文
+    nexus_context = NexusContext(
+        project_root=project_root,
+        case_path=case_path,
+        data_hub=None,  # 稍后设置
+        logger=logger,
+        run_config=run_config
+    )
+    
+    # 4. 创建 DataHub
+    data_hub = DataHub(case_path=case_path, logger=logger, context=nexus_context)
+    nexus_context.data_hub = data_hub
+    
+    # 5. 创建并运行 PipelineRunner
+    try:
+        from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
+        runner = PipelineRunnerFactory.create(nexus_context)
+        runner.run()
+        logger.info(f"====== Case '{case_path.name}' finished successfully. ======")
+    except NexusError as e:
+        handle_exception(e)
+        raise typer.Exit(code=1)
+```
+
+### 2.2 PipelineRunner 执行流程
+
+`PipelineRunner` 是框架的核心执行引擎，位于 `src/nexus/core/pipeline_runner.py`：
+
+```python
+# pipeline_runner.py
+class PipelineRunner:
+    def __init__(self, context: NexusContext):
+        self._context = context
+        # 使用 DI 容器获取 logger（如果可用）
+        try:
+            self._logger = container.resolve(LoggerInterface)
+        except ServiceNotFoundError:
+            self._logger = context.logger
+        # 发现插件
+        discover_plugins(plugin_modules, self._logger, self._context.project_root)
+    
+    def run(self, plugin_name: str | None = None) -> None:
+        # 1. 配置设置阶段
+        raw_case_config = load_yaml(self._context.case_path / "case.yaml")
+        pipeline_steps = raw_case_config.get("pipeline", [])
+        
+        # 2. 依赖发现阶段
+        discovered_sources, plugin_sources, plugin_sinks = self._discover_io_declarations(pipeline_steps, raw_case_config)
+        
+        # 3. 配置合并
+        config_manager = ConfigManager.from_sources(
+            project_root=self._context.project_root,
+            case_path=self._context.case_path,
+            plugin_registry=PLUGIN_REGISTRY,
+            discovered_data_sources=discovered_sources,
+            cli_args=self._context.run_config.get('cli_args', {})
+        )
+        
+        # 4. 数据加载和预检类型检查
+        final_data_sources = config_manager.get_data_sources()
+        self._context.data_hub.add_data_sources(final_data_sources)
+        
+        # 5. 执行阶段
+        for step_config in pipeline_steps:
+            self._execute_plugin_step(step_config, plugin_sources, plugin_sinks, config_manager, raw_case_config)
+```
+
+### 2.3 依赖发现流程
+
+`_discover_io_declarations` 方法负责发现插件的输入输出依赖：
+
+```python
+def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]], case_config: dict) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
+    base_data_sources = {}
+    plugin_sources = {}
+    plugin_sinks = {}
+    
+    io_mapping = case_config.get("io_mapping", {})
+    
+    for step_config in pipeline_steps:
+        plugin_name = step_config.get("plugin")
+        if not plugin_name or plugin_name not in PLUGIN_REGISTRY or not step_config.get("enable", True):
+            continue
+            
+        plugin_spec = PLUGIN_REGISTRY[plugin_name]
+        if not plugin_spec.config_model:
+            continue
+            
+        plugin_sources[plugin_name] = {}
+        plugin_sinks[plugin_name] = {}
+        
+        # 使用 get_type_hints 正确解析类型提示
+        type_hints = get_type_hints(plugin_spec.config_model, include_extras=True)
+        
+        for field_name, field_type in type_hints.items():
+            # 处理联合类型（如 Optional[Annotated[...]]）
+            field_args = get_args(field_type)
+            if field_args and get_origin(field_type) is Union:
+                if get_origin(field_args[0]) is Annotated:
+                    field_metadata = get_args(field_args[0])[1:]  # 跳过实际类型，获取元数据
+                    actual_type = get_args(field_args[0])[0]
+                else:
+                    continue
+            # 处理直接注解类型
+            elif get_origin(field_type) is Annotated:
+                field_metadata = get_args(field_type)[1:]  # 跳过实际类型，获取元数据
+                actual_type = get_args(field_type)[0]
+            else:
+                continue
+                
+            for item in field_metadata:
+                if isinstance(item, DataSource):
+                    # 对于 ConfigManager（name -> path/handler 映射）
+                    name = item.name
+                    # 从 io_mapping 获取路径和处理器
+                    source_config = io_mapping.get(name, {})
+                    path = source_config.get("path", "")
+                    handler = source_config.get("handler", "")
+                    
+                    # 构建 handler_args
+                    handler_args = item.handler_args.copy() if item.handler_args else {}
+                    if handler:
+                        handler_args["name"] = handler
+                    
+                    base_data_sources[name] = {
+                        "path": path,
+                        "handler_args": handler_args,
+                        "expected_type": actual_type  # 存储预期类型用于预检检查
+                    }
+                    # 对于 runner（plugin -> field -> DataSource 映射）
+                    plugin_sources[plugin_name][field_name] = item
+                    
+                elif isinstance(item, DataSink):
+                    plugin_sinks[plugin_name][field_name] = item
+                    
+    return base_data_sources, plugin_sources, plugin_sinks
+```
+
+### 2.4 配置管理流程
+
+`ConfigManager` 负责配置的加载和合并，位于 `src/nexus/core/config/manager.py`：
+
+```python
+# manager.py
+class ConfigManager:
+    def __init__(self, *,
+                 global_config: Dict,
+                 case_config: Dict,
+                 cli_args: Dict,
+                 plugin_registry: Dict[str, PluginSpec],
+                 discovered_data_sources: Dict,
+                 case_path: Path,
+                 project_root: Path):
+        self.global_config = global_config
+        self.case_config = case_config
+        self.cli_args = cli_args
+        self.discovered_data_sources = discovered_data_sources
+        self.case_path = case_path
+        self.project_root = project_root
+        self.plugin_defaults_map = self._extract_plugin_defaults(plugin_registry)
+        
+        self._merged_data_sources = self._merge_all_data_sources()
+        
+    @classmethod
+    def from_sources(cls, *,
+                     project_root: Path,
+                     case_path: Path,
+                     plugin_registry: Dict[str, PluginSpec],
+                     discovered_data_sources: Dict,
+                     cli_args: Dict = None) -> 'ConfigManager':
+        """
+        工厂方法，从所有源加载创建 ConfigManager。
+        优先级：CLI > Case > Global > Environment > Defaults。
+        """
+        cli_args = cli_args or {}
+        
+        # 1. 从文件和环境加载配置
+        global_config_path = project_root / "config" / "global.yaml"
+        case_config_path = case_path / "case.yaml"
+        
+        global_conf = _load_yaml(global_config_path)
+        case_conf = _load_yaml(case_config_path)
+        env_conf = cls._load_environment_config()
+        
+        # 2. 合并全局、环境和案例配置
+        # Env 覆盖 global，case 覆盖 env。
+        merged_global = _deep_merge(global_conf, env_conf)
+        final_case_config = _deep_merge(merged_global, case_conf)
+        
+        return cls(
+            global_config=merged_global,
+            case_config=final_case_config,
+            cli_args=cli_args,
+            plugin_registry=plugin_registry,
+            discovered_data_sources=discovered_data_sources,
+            case_path=case_path,
+            project_root=project_root
+        )
+```
+
+### 2.5 插件执行流程
+
+插件执行由 `PluginExecutor` 处理，位于 `src/nexus/core/plugin/executor.py`：
+
+```python
+# executor.py
+class PluginExecutor:
+    def __init__(self, plugin_spec: PluginSpec, context: PluginContext):
+        self._spec = plugin_spec
+        self._context = context
+        self._func = plugin_spec.func
+        
+    def execute(self) -> Any:
+        """
+        使用准备好的上下文执行插件函数并返回其结果。
+        """
+        self._context.logger.info(f"Executing plugin: '{self._spec.name}'")
+        
+        # 1. 根据函数签名准备参数
+        args_to_inject = self._prepare_arguments()
+        
+        # 2. 执行插件函数
+        try:
+            return_value = self._func(**args_to_inject)
+            self._context.logger.info(f"Plugin '{self._spec.name}' executed successfully.")
+            return return_value
+        except Exception as e:
+            self._context.logger.error(
+                f"Error executing plugin '{self._spec.name}': {e}",
+                exc_info=True
+            )
+            raise
+            
+    def _prepare_arguments(self) -> dict[str, Any]:
+        """
+        根据插件函数签名准备参数。
+        支持新的 PluginContext 签名和旧的签名以保持向后兼容性。
+        """
+        args_to_inject = {}
+        signature = inspect.signature(self._func)
+        params = signature.parameters
+        
+        # 检查插件是否使用新的 PluginContext 签名
+        if len(params) == 1 and "context" in params:
+            # 新签名：def plugin_function(context: PluginContext)
+            args_to_inject["context"] = self._context
+        else:
+            # 旧签名支持：def plugin_function(config, logger)
+            if "config" in params:
+                args_to_inject["config"] = self._context.config
+            if "logger" in params:
+                args_to_inject["logger"] = self._context.logger
+            if "context" in params:
+                args_to_inject["context"] = self._context
+                
+            # 如果使用旧签名则警告
+            if len(params) > 0:
+                self._context.logger.warning(
+                    f"Plugin '{self._spec.name}' uses legacy signature: {signature}. "
+                    f"Consider updating to the new PluginContext signature: (context: PluginContext)"
+                )
+                
+        return args_to_inject
+```
+
+### 2.6 数据处理流程
+
+`DataHub` 是数据处理的核心，位于 `src/nexus/core/data/hub.py`：
+
+```python
+# hub.py
+class DataHub:
+    def __init__(self, case_path: Path, logger: Logger = None, context=None):
+        self._case_path = case_path
+        self._data: Dict[str, Any] = {}
+        self._registry: Dict[str, DataSource] = {}
+        self.logger = logger if logger else logging.getLogger(__name__)
+        
+        # 初始化处理器发现
+        initialize_handler_discovery(context)
+        
+    def get(self, name: str) -> Any:
+        """
+        从 Hub 检索数据，必要时进行懒加载。
+        """
+        if name in self._data:
+            logger.debug(f"Getting data '{name}' from memory.")
+            return self._data[name]
+            
+        if name in self._registry:
+            source = self._registry[name]
+            path = source.path
+            must_exist = source.handler_config.get("must_exist", True)
+            
+            logger.info(f"Lazy loading data '{name}' from: {path}...")
+            
+            try:
+                handler = self._get_handler_instance(source)
+                # 对于目录处理器，我们在调用 load 之前不检查 must_exist
+                # 因为处理器本身会在需要时创建目录
+                if must_exist and not path.exists() and not getattr(handler, 'handles_directories', False):
+                    raise FileNotFoundError(f"Required file for data source '{name}' not found at: {path}")
+                    
+                data = handler.load(path)
+                self._data[name] = data
+                return data
+            except Exception as e:
+                error_context = {
+                    "data_source_name": name,
+                    "path": str(path),
+                    "must_exist": must_exist
+                }
+                exc = NexusError(
+                    f"Failed to load data '{name}' from {path}: {e}",
+                    context=error_context,
+                    cause=e
+                )
+                handle_exception(exc, error_context)
+                raise exc
+                
+        raise KeyError(f"Data '{name}' not found in DataHub.")
+```
+
+## 3. 关键设计模式
+
+### 3.1 依赖注入 (Dependency Injection)
+
+框架使用依赖注入来管理服务：
+
+```python
+# container.py
+class DIContainer:
+    def register(
+        self,
+        service_type: Type,
+        implementation: Any = None,
+        lifecycle: str = ServiceLifeCycle.SINGLETON,
+        factory: Optional[Callable] = None
+    ) -> None:
+        # 注册服务
+        
+    def resolve(self, service_type: Type) -> Any:
+        # 解析服务
+```
+
+### 3.2 插件系统
+
+插件通过装饰器注册：
+
+```python
+# decorator.py
+def plugin(*, name: str, output_key: str | None = None, default_config: Type[BaseModel] | None = None):
+    def decorator(func: Callable):
+        spec = PluginSpec(
+            name=name,
+            func=func,
+            output_key=output_key,
+            config_model=default_config
+        )
+        
+        if name in PLUGIN_REGISTRY:
+            raise ValueError(f"Plugin with name '{name}' is already registered.")
+            
+        PLUGIN_REGISTRY[name] = spec
+        return wrapper
+    return decorator
+```
+
+### 3.3 数据处理器模式
+
+数据处理器通过装饰器注册：
+
+```python
+# handlers/decorator.py
+def handler(*, name: str, handles_extension: str = None, produced_type: Type = None):
+    def decorator(cls: Type[DataHandler]):
+        if name:
+            HANDLER_REGISTRY[name] = cls
+        if handles_extension:
+            HANDLER_REGISTRY[handles_extension] = cls
+            
+        # 设置处理器属性
+        cls.produced_type = produced_type
+        return cls
+    return decorator
+```
+
+## 4. 异常处理机制
+
+框架采用分层异常处理：
+
+```python
+# exceptions.py
+class NexusError(Exception):
+    def __init__(
+        self, 
+        message: str, 
+        context: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
+    ):
+        super().__init__(message)
+        self.message = message
+        self.context = context or {}
+        self.cause = cause
+        
+class ConfigurationError(NexusError):
+    """配置错误"""
+    pass
+    
+class PluginError(NexusError):
+    """插件错误"""
+    pass
+```
+
+全局异常处理器：
+
+```python
+# exception_handler.py
+class GlobalExceptionHandler:
+    def handle_exception(self, exc: Exception, context: Optional[dict] = None) -> None:
+        if isinstance(exc, NexusError) and context:
+            exc.context.update(context)
+            
+        if isinstance(exc, ConfigurationError):
+            self.logger.error(f"Configuration error: {exc}", exc_info=False)
+        elif isinstance(exc, PluginError):
+            self.logger.error(f"Plugin error: {exc}", exc_info=True)
+        elif isinstance(exc, NexusError):
+            self.logger.error(f"Framework error: {exc}", exc_info=True)
+        else:
+            self._handle_generic_exception(exc)
+```
+
+## 5. 运行时流程图
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as CLI (cli.py)
+    participant R as PipelineRunner
+    participant M as ConfigManager
+    participant H as DataHub
+    participant E as PluginExecutor
+    participant P as Plugin
+    participant DH as DataHandler
+
+    U->>C: data-replay pipeline --case demo
+    C->>R: PipelineRunner(nexus_context).run()
+    
+    Note over R: 1. Configuration Setup Phase
+    R->>M: ConfigManager.from_sources(...)
+    R->>M: config_manager.get_data_sources()
+    M-->>R: data_sources
+    
+    Note over R: 2. Data Loading
+    R->>H: data_hub.add_data_sources(data_sources)
+    
+    loop For each plugin in pipeline
+        Note over R: 3. Plugin Execution Cycle
+        R->>M: config_manager.get_plugin_config(plugin_name, ...)
+        M-->>R: config_dict
+        
+        Note over R: 4. Data Hydration
+        loop For each DataSource field
+            R->>H: data_hub.get(name)
+            H->>DH: handler.load(path)
+            DH-->>H: data
+            H-->>R: data
+        end
+        
+        R->>R: config_object = plugin_spec.config_model(**hydrated_dict)
+        
+        Note over R: 5. Plugin Execution
+        R->>E: PluginExecutor(plugin_spec, plugin_context).execute()
+        E->>P: plugin_function(**args)
+        P-->>E: return_value
+        E-->>R: return_value
+        
+        Note over R: 6. Output Handling
+        opt If plugin has DataSink
+            R->>H: data_hub.save(data, path, handler_args)
+            H->>DH: handler.save(data, path)
+        end
+    end
+    
+    Note over R,C: Exception Handling
+    opt On Exception
+        R->>C: handle_exception(exc)
+        C->>C: Log error with context
+        C->>C: Exit with error code
+    end
+    
+    R-->>C: Pipeline finished
+    C-->>U: Success message
+```

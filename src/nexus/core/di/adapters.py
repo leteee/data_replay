@@ -72,3 +72,15 @@ class ConfigManagerAdapter(ConfigManagerInterface):
             plugin_name=plugin_name,
             case_plugin_config=case_plugin_config
         )
+        
+    @classmethod
+    def from_sources(cls, *, project_root: Path, case_path: Path, plugin_registry: Dict[str, Any], 
+                     discovered_data_sources: Dict, cli_args: Dict = None) -> 'ConfigManagerInterface':
+        config_manager = ConfigManager.from_sources(
+            project_root=project_root,
+            case_path=case_path,
+            plugin_registry=plugin_registry,
+            discovered_data_sources=discovered_data_sources,
+            cli_args=cli_args
+        )
+        return cls(config_manager)

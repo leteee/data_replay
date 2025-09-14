@@ -5,7 +5,7 @@ Dependency Injection module for the Nexus framework.
 from .container import DIContainer, container, ServiceNotFoundError, ServiceLifeCycle
 from .services import LoggerInterface, DataHubInterface, ConfigManagerInterface, PluginExecutorInterface, PipelineRunnerInterface
 from .adapters import LoggerAdapter, DataHubAdapter, ConfigManagerAdapter
-from .exceptions import DIException, ServiceResolutionException, ServiceRegistrationException, DependencyInjectionException
+from .exceptions import DIException
 from .testing import TestDIContainer, MockLogger, MockDataHub
 
 __all__ = [
@@ -22,9 +22,7 @@ __all__ = [
     "DataHubAdapter",
     "ConfigManagerAdapter",
     "DIException",
-    "ServiceResolutionException",
-    "ServiceRegistrationException",
-    "DependencyInjectionException",
+    
     "TestDIContainer",
     "MockLogger",
     "MockDataHub"

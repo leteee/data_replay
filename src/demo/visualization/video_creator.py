@@ -4,17 +4,16 @@ from pathlib import Path
 from logging import Logger
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field
+from nexus.core.plugin.base import PluginConfig
+from pydantic import Field
 
 from nexus.core.plugin.decorator import plugin
 from nexus.core.plugin.typing import DataSource, DataSink
 from nexus.core.context import PluginContext
 
 
-class VideoCreatorConfig(BaseModel):
+class VideoCreatorConfig(PluginConfig):
     """Configuration model for the Video Creator plugin."""
-    # Needed to allow Path fields
-    model_config = {"arbitrary_types_allowed": True}
     
     # --- Data Dependencies ---
     rendered_frames_dir: Annotated[

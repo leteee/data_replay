@@ -9,11 +9,7 @@ import inspect
 import weakref
 from functools import lru_cache
 
-from .exceptions import (
-    ServiceResolutionException, 
-    ServiceRegistrationException, 
-    DependencyInjectionException
-)
+from .exceptions import DIException
 
 
 class ServiceNotFoundError(Exception):
@@ -76,11 +72,10 @@ class DIContainer:
             
             self._logger.debug(f"Registered service: {service_key} with lifecycle {lifecycle}")
         except Exception as e:
-            raise ServiceRegistrationException(
-                service_type=self._get_service_name(service_type),
+            raise DIException(
                 message=f"Failed to register service {service_type}",
                 context={
-                    "service_type": str(service_type),
+                    "service_type": self._get_service_name(service_type),
                     "implementation": str(implementation) if implementation else "None",
                     "lifecycle": lifecycle
                 },
@@ -120,7 +115,7 @@ class DIContainer:
             #     self.register(ConfigManagerInterface, ConfigManagerAdapter(context.config_manager))
             #     self._logger.debug("Registered core config manager service")
                 
-        except ServiceRegistrationException:
+        except DIException:
             # Re-raise service registration exceptions
             raise
         except Exception as e:
@@ -163,7 +158,7 @@ class DIContainer:
         except ServiceNotFoundError:
             # Re-raise service not found errors as ServiceResolutionException
             service_name = self._get_service_name(service_type)
-            raise ServiceResolutionException(
+            raise DIException(
                 service_type=service_name,
                 message=f"Service {service_name} not found in container",
                 context={
@@ -171,12 +166,12 @@ class DIContainer:
                     "service_key": self._get_service_key(service_type) if 'service_type' in locals() else "unknown"
                 }
             )
-        except ServiceResolutionException:
+        except DIException:
             # Re-raise service resolution exceptions
             raise
         except Exception as e:
             service_name = self._get_service_name(service_type)
-            raise ServiceResolutionException(
+            raise DIException(
                 service_type=service_name,
                 message=f"Failed to resolve service {service_name}",
                 context={
@@ -185,37 +180,6 @@ class DIContainer:
                 },
                 cause=e
             )
-        """
-        Resolve a service from the container.
-
-        Args:
-            service_type: The type (interface) of the service to resolve
-
-        Returns:
-            The resolved service instance
-
-        Raises:
-            ServiceNotFoundError: If the service is not registered
-        """
-        service_key = self._get_service_key(service_type)
-        
-        if service_key not in self._registrations:
-            raise ServiceNotFoundError(f"Service {service_key} not found in container")
-            
-        registration = self._registrations[service_key]
-        
-        # Check if we already have a singleton instance
-        if registration["lifecycle"] == ServiceLifeCycle.SINGLETON and service_key in self._services:
-            return self._services[service_key]
-            
-        # Create the service instance
-        instance = self._create_instance(registration)
-        
-        # Store singleton instances
-        if registration["lifecycle"] == ServiceLifeCycle.SINGLETON:
-            self._services[service_key] = instance
-            
-        return instance
 
     def _get_service_key(self, service_type: Type) -> str:
         """Generate a unique key for a service type with caching."""
@@ -272,7 +236,7 @@ class DIContainer:
         except Exception as e:
             service_type = registration.get("type", "Unknown")
             service_name = self._get_service_name(service_type) if service_type != "Unknown" else "Unknown"
-            raise ServiceResolutionException(
+            raise DIException(
                 service_type=service_name,
                 message=f"Failed to create instance of service {service_name}",
                 context={
@@ -318,7 +282,7 @@ class DIContainer:
             raise
         except Exception as e:
             class_name = cls.__name__ if hasattr(cls, '__name__') else str(cls)
-            raise DependencyInjectionException(
+            raise DIException(
                 target_type=class_name,
                 message=f"Failed to inject dependencies for {class_name}",
                 context={

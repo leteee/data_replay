@@ -10,11 +10,7 @@ from logging import Logger
 from pydantic import BaseModel
 
 from .handlers import handler_registry, initialize_handler_discovery
-from ..exceptions import (
-    DataSourceException,
-    DataSinkException,
-    DataHandlerException
-)
+from ..exceptions import NexusError
 from ..exception_handler import handle_exception
 
 logger = logging.getLogger(__name__)
@@ -123,7 +119,7 @@ class DataHub:
                     "path": str(path),
                     "must_exist": must_exist
                 }
-                exc = DataSourceException(
+                exc = NexusError(
                     f"Failed to load data '{name}' from {path}: {e}",
                     context=error_context,
                     cause=e
@@ -168,7 +164,7 @@ class DataHub:
                 "path": str(path),
                 "handler_name": handler_name
             }
-            exc = DataSinkException(
+            exc = NexusError(
                 f"Failed to save data to {path}: {e}",
                 context=error_context,
                 cause=e
