@@ -1,5 +1,6 @@
 from nexus.core.plugin.decorator import PLUGIN_REGISTRY
 from nexus.core.plugin.discovery import discover_plugins
+from nexus.core.data.handlers import get_handler
 from nexus.core.data.handlers.decorator import HANDLER_REGISTRY
 from nexus.core.data.handlers.discovery import discover_handlers
 from nexus.core.data.hub import DataHub

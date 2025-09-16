@@ -120,7 +120,8 @@ class DIContainer:
             raise
         except Exception as e:
             self._logger.warning(f"Failed to register some core services: {e}")
-            # Don't re-raise to maintain backward compatibility
+            # Re-raise to enforce proper error handling
+            raise
 
     def resolve(self, service_type: Type) -> Any:
         """

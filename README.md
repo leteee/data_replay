@@ -24,9 +24,9 @@ A flexible, configuration-driven Python framework for building robust, extensibl
 .
 ├── cases/                # Contains different data processing cases (e.g., demo).
 ├── config/               # Global framework configuration.
+├── demo/                 # Source code for the demo plugins.
 ├── logs/                 # Directory for log files.
 ├── src/
-│   └── demo/             # Source code for the demo plugins.
 │   └── nexus/            # Core framework source code.
 ├── templates/            # Templates for generating new cases.
 ├── tests/

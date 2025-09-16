@@ -41,27 +41,9 @@ class PipelineRunner:
 
     def __init__(self, context: NexusContext):
         self._context = context
-        # Use DI container for logger if available, otherwise use direct injection
-        try:
-            self._logger = container.resolve(LoggerInterface)
-        except ServiceNotFoundError:
-            # This is expected if the service is not registered
-            self._logger = context.logger
-        except Exception as e:
-            # Log unexpected errors but continue with direct injection
-            self._logger = context.logger
-            self._logger.warning(f"Unexpected error resolving logger from DI container: {e}")
-            
-        # Try to get ConfigManager from DI container
-        try:
-            self._config_manager = container.resolve(ConfigManagerInterface)
-        except ServiceNotFoundError:
-            # This is expected if the service is not registered
-            self._config_manager = None
-        except Exception as e:
-            # Log unexpected errors but continue with direct injection
-            self._logger.warning(f"Unexpected error resolving config manager from DI container: {e}")
-            self._config_manager = None
+        # Use DI container for services if available, otherwise use direct injection
+        self._logger = self._resolve_service(LoggerInterface, context.logger)
+        self._config_manager = self._resolve_service(ConfigManagerInterface, None)
             
         # Create service instances
         self._io_discovery_service = IODiscoveryService(self._logger)
@@ -76,8 +58,20 @@ class PipelineRunner:
             plugin_modules, 
             self._logger, 
             self._context.project_root,
-            self._context.run_config.get("plugin_paths", [])
+            self._context.run_config.get("plugin_paths", ["./demo"])
         )
+        
+    def _resolve_service(self, service_type, default_value):
+        """Resolve a service from the DI container or return a default value."""
+        try:
+            return container.resolve(service_type)
+        except ServiceNotFoundError:
+            # This is expected if the service is not registered
+            return default_value
+        except Exception as e:
+            # Log unexpected errors but continue with default value
+            self._logger.warning(f"Unexpected error resolving {service_type.__name__} from DI container: {e}")
+            return default_value
 
     def _preflight_type_check(self, data_source_name: str, source_config: dict, handler: DataHandler) -> bool:
         """
@@ -151,7 +145,7 @@ class PipelineRunner:
         # Perform pre-flight type checks
         for name, source_config in final_data_sources.items():
             try:
-                handler = handler_registry.get_handler(Path(source_config["path"]), source_config["handler_args"].get("name"))
+                handler = handler_registry(Path(source_config["path"]), source_config["handler_args"].get("name"))
                 self._preflight_type_check(name, source_config, handler)
             except Exception as e:
                 self._logger.warning(f"Could not perform pre-flight type check for '{name}': {e}")

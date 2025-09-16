@@ -114,8 +114,28 @@ def pipeline(
         destination_path = case_path / "case.yaml"
         shutil.copy2(template_path, destination_path)
         logger.info(f"Created case '{case}' from template '{templates}' at {destination_path}")
+    else:
+        # Handle regular case path resolution
+        cases_root_str = global_config.get("cases_root", "cases")
+        cases_root = Path(cases_root_str)
+        if not cases_root.is_absolute():
+            cases_root = (project_root / cases_root).resolve()
+            
+        case_arg_path = Path(case)
+        case_path = case_arg_path if case_arg_path.is_absolute() else cases_root / case_arg_path
 
-    logger.info(f"====== Running Case: {case} ======")
+    if not case_path.is_dir():
+        logger.error(f"Case path not found: {case_path}")
+        raise typer.Exit(code=1)
+
+    logger.info(f"====== Running Case: {case_path.name} ======")
+
+    run_config = {
+        "cli_args": {},
+        "plugin_modules": global_config.get("plugin_modules", []),
+        "plugin_paths": global_config.get("plugin_paths", ["./demo"]),
+        "handler_paths": global_config.get("handler_paths", ["./demo"])
+    }
 
     try:
         nexus_context = _setup_nexus_context(case, global_config)

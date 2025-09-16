@@ -9,8 +9,18 @@ def discover_plugins(plugin_modules: List[str], logger: Logger, project_root: Pa
     """
     Scans a list of packages to find and import all modules,
     which triggers the @plugin decorators to register themselves.
+    
+    Args:
+        plugin_modules: List of plugin modules to scan
+        logger: Logger instance for logging
+        project_root: Project root path for resolving relative paths
+        additional_paths: Additional paths to scan for plugins, defaults to ["./demo"]
     """
     logger.info("Starting plugin discovery...")
+    
+    # Set default additional paths if not provided
+    if additional_paths is None:
+        additional_paths = ["./demo"]
     
     # Add additional paths to sys.path if provided
     paths_added = []

@@ -44,6 +44,5 @@ class PluginConfig(BaseModel):
         # Enable arbitrary types by default to support DataFrame, Path, etc.
         arbitrary_types_allowed = True
         
-        # This allows instances of the class to be used as dictionaries
-        # which can be useful for backward compatibility
-        extra = "allow"
+        # Do not allow extra attributes to enforce strict configuration models
+        extra = "forbid"

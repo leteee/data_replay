@@ -68,7 +68,7 @@ class DataHub:
         handler_name = source.handler_config.get("name")
         self.logger.debug(f"Getting handler for path: {source.path}, handler_name: {handler_name}, handler_config: {source.handler_config}")
         # handler_params are not passed to get_handler, they are used for handler initialization
-        return handler_registry.get_handler(source.path, handler_name=handler_name)
+        return handler_registry(source.path, handler_name=handler_name)
 
     def register(self, name: str, data: Any):
         """
@@ -114,30 +114,10 @@ class DataHub:
                 self._data[name] = data
                 return data
             except Exception as e:
-                error_context = {
-                    "data_source_name": name,
-                    "path": str(path),
-                    "must_exist": must_exist
-                }
-                exc = NexusError(
-                    f"Failed to load data '{name}' from {path}: {e}",
-                    context=error_context,
-                    cause=e
-                )
-                handle_exception(exc, error_context)
-                raise exc
-            
+                return self._handle_data_error(e, "load", name, path, must_exist)
+                
         raise KeyError(f"Data '{name}' not found in DataHub.")
-
-    def get_path(self, name: str) -> Path | None:
-        """
-        Gets the registered file path for a data source, if it exists in the registry.
-        This method does not perform any I/O or existence checks.
-        """
-        if name in self._registry:
-            return self._registry[name].path
-        return None
-
+        
     def save(self, data: Any, path: Path, handler_args: dict | None = None):
         """
         Saves data to a specified path using the appropriate handler.
@@ -153,24 +133,48 @@ class DataHub:
         self.logger.debug(f"Attempting to save data to {path} using handler '{handler_name or 'auto'}'.")
         
         try:
-            handler = handler_registry.get_handler(path, handler_name=handler_name)
+            handler = handler_registry(path, handler_name=handler_name)
             path.parent.mkdir(parents=True, exist_ok=True)
             # We might need to pass specific save options from handler_args to the save method
             # For now, we assume the handler's save method has a simple signature.
             handler.save(data, path)
             self.logger.info(f"Data successfully saved to: {path}")
         except Exception as e:
-            error_context = {
-                "path": str(path),
-                "handler_name": handler_name
-            }
-            exc = NexusError(
-                f"Failed to save data to {path}: {e}",
-                context=error_context,
-                cause=e
-            )
-            handle_exception(exc, error_context)
-            raise exc
+            return self._handle_data_error(e, "save", None, path, None, handler_name)
+            
+    def _handle_data_error(self, e: Exception, operation: str, name: str = None, 
+                          path: Path = None, must_exist: bool = None, 
+                          handler_name: str = None) -> None:
+        """
+        Handle data operation errors consistently.
+        
+        Args:
+            e: The exception that occurred
+            operation: The operation that failed ("load" or "save")
+            name: The data source name (for load operations)
+            path: The path being accessed
+            must_exist: The must_exist flag (for load operations)
+            handler_name: The handler name (for save operations)
+        """
+        error_context = {
+            "operation": operation,
+            "path": str(path) if path else "Unknown"
+        }
+        
+        if name:
+            error_context["data_source_name"] = name
+        if must_exist is not None:
+            error_context["must_exist"] = must_exist
+        if handler_name:
+            error_context["handler_name"] = handler_name
+            
+        exc = NexusError(
+            f"Failed to {operation} data{' ' + name if name else ''} at {path}: {e}",
+            context=error_context,
+            cause=e
+        )
+        handle_exception(exc, error_context)
+        raise exc
 
     def __contains__(self, name: str) -> bool:
         return name in self._data or name in self._registry

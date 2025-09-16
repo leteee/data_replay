@@ -14,8 +14,8 @@ class PluginExecutor:
     """
     Executes a plugin with a fully prepared context.
 
-    This executor supports the new PluginContext-based signature where plugins
-    receive a single context object containing all necessary dependencies.
+    This executor requires plugins to use the new PluginContext-based signature 
+    where plugins receive a single context object containing all necessary dependencies.
     """
 
     def __init__(self, plugin_spec: PluginSpec, context: PluginContext):
@@ -27,8 +27,7 @@ class PluginExecutor:
         """
         Executes the plugin function with the prepared context and returns its result.
 
-        It inspects the plugin's signature to determine whether to pass individual
-        arguments or the new PluginContext object.
+        This method requires plugins to use the new PluginContext signature.
         """
         self._context.logger.info(f"Executing plugin: '{self._spec.name}'")
 
@@ -51,8 +50,7 @@ class PluginExecutor:
         """
         Prepares the arguments for the plugin function based on its signature.
         
-        Supports both the new PluginContext signature and the legacy signature
-        for backward compatibility.
+        This method requires plugins to use the new PluginContext signature.
         """
         args_to_inject = {}
         signature = inspect.signature(self._func)
@@ -63,19 +61,10 @@ class PluginExecutor:
             # New signature: def plugin_function(context: PluginContext)
             args_to_inject["context"] = self._context
         else:
-            # Legacy signature support: def plugin_function(config, logger)
-            if "config" in params:
-                args_to_inject["config"] = self._context.config
-            if "logger" in params:
-                args_to_inject["logger"] = self._context.logger
-            if "context" in params:
-                args_to_inject["context"] = self._context
-            
-            # Warn if using legacy signature
-            if len(params) > 0:
-                self._context.logger.warning(
-                    f"Plugin '{self._spec.name}' uses legacy signature: {signature}. "
-                    f"Consider updating to the new PluginContext signature: (context: PluginContext)"
-                )
+            # Only support the new PluginContext signature
+            raise ValueError(
+                f"Plugin '{self._spec.name}' must use the new PluginContext signature: "
+                f"(context: PluginContext). Current signature: {signature}"
+            )
 
         return args_to_inject

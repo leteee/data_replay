@@ -60,13 +60,5 @@ def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
 
     return handler_cls()
 
-
-# To maintain a consistent interface for the rest of the codebase (e.g., DataHub),
-# we can provide a simple wrapper object that exposes the get_handler function.
-class _RegistryWrapper:
-    """A simple object that mimics the old registry's get_handler method."""
-    def get_handler(self, path: Path, handler_name: Optional[str] = None) -> DataHandler:
-        return get_handler(path, handler_name)
-
-# The global instance that the rest of the application will use.
-handler_registry = _RegistryWrapper()
+# Global instance that the rest of the application will use.
+handler_registry = get_handler

@@ -5,6 +5,6 @@ plugin_enable: True
 plugin_modules:
   - demo
 plugin_paths:
-  - "./custom_plugins"
+  - "./demo"
 handler_paths:
-  - "./custom_plugins"
+  - "./demo"
