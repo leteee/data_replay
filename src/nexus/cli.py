@@ -133,8 +133,8 @@ def pipeline(
     run_config = {
         "cli_args": {},
         "plugin_modules": global_config.get("plugin_modules", []),
-        "plugin_paths": global_config.get("plugin_paths", ["./demo"]),
-        "handler_paths": global_config.get("handler_paths", ["./demo"])
+        "plugin_paths": global_config.get("plugin_paths", ["./src/nexus/plugins"]),
+        "handler_paths": global_config.get("handler_paths", ["./src/nexus/handlers"])
     }
 
     try:

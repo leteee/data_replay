@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from ..plugin.spec import PluginSpec
 from ..plugin.typing import DataSource
+from ..plugin.decorator import PLUGIN_REGISTRY
 from ..utils.cache import memory_cache
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class ConfigManager:
         self.global_config = global_config
         self.case_config = case_config
         self.cli_args = cli_args
+        self.plugin_registry = plugin_registry  # Store plugin registry for later use
         self.discovered_data_sources = discovered_data_sources
         self.case_path = case_path
         self.project_root = project_root
@@ -179,20 +181,44 @@ class ConfigManager:
         Calculates the final, merged configuration for a single plugin.
         Priority: CLI > Case Plugin Config > Global Config > Plugin Defaults.
         """
+        plugin_spec = None
+        # Find the plugin spec to get its config model
+        for name, spec in self.plugin_registry.items():
+            if name == plugin_name:
+                plugin_spec = spec
+                break
+        
+        # If no config model, return an empty dict
+        if not plugin_spec or not plugin_spec.config_model or not issubclass(plugin_spec.config_model, BaseModel):
+            return {}
+        
+        # Get plugin-specific defaults
         plugin_default = self.plugin_defaults_map.get(plugin_name, {})
         
         # Start with global config, then layer plugin-specific case config on top
-        final_config = deepcopy(self.global_config)
-        final_config = _deep_merge(final_config, case_plugin_config)
+        merged_config = deepcopy(self.global_config)
+        merged_config = _deep_merge(merged_config, case_plugin_config)
 
         # Layer defaults underneath everything
-        final_config = _deep_merge(plugin_default, final_config)
+        merged_config = _deep_merge(plugin_default, merged_config)
 
         # Finally, apply CLI arguments with the highest priority
-        final_config = _deep_merge(final_config, self.cli_args)
+        merged_config = _deep_merge(merged_config, self.cli_args)
         
-        # Clean up keys that are not part of the plugin's config
-        if 'data_sources' in final_config:
-            del final_config['data_sources']
+        # Create a config dict with only the fields that are defined in the plugin's config model
+        plugin_config_dict = {}
+        
+        # Add fields from the plugin's config model
+        for field_name, field_info in plugin_spec.config_model.model_fields.items():
+            # Check if this field has a DataSource annotation (these are handled separately)
+            has_data_source = any(isinstance(item, DataSource) for item in field_info.metadata)
+            if has_data_source:
+                continue  # Skip DataSource fields, they will be injected from DataHub
             
-        return final_config
+            # Get the value from the merged config, fallback to field default if not present
+            if field_name in merged_config:
+                plugin_config_dict[field_name] = merged_config[field_name]
+            elif field_info.default is not ...:  # not Required
+                plugin_config_dict[field_name] = field_info.default
+        
+        return plugin_config_dict

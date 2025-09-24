@@ -307,3 +307,264 @@ Through this comprehensive refactoring, the Nexus Framework is now:
 The framework is now ready to support more complex use cases and has established a solid foundation for future expansion and maintenance. All functionality has been thoroughly tested to ensure high quality and reliability.
 
 This refactoring not only solved existing problems but also established a good foundation for the framework's long-term development, making it an ideal choice for building robust, scalable, and maintainable data processing pipelines.
+
+# 12. Project Functionality Checklist
+
+## Core Framework Features
+
+### 1. Plugin System
+- [x] Plugin registration via `@plugin` decorator
+- [x] Pure-function plugin design
+- [x] Plugin configuration via Pydantic models
+- [x] Plugin execution with dependency injection
+- [x] Plugin enable/disable functionality
+- [x] Plugin-specific configuration parameters
+- [x] Plugin return value handling
+- [x] Plugin documentation generation
+
+### 2. Data Handling
+- [x] DataHub as central data exchange
+- [x] Lazy loading of data sources
+- [x] Automatic I/O handling
+- [x] Data source registration and management
+- [x] Data sink handling for plugin outputs
+- [x] Type safety checks for data operations
+
+### 3. Data Handlers
+- [x] CSV handler for reading/writing CSV files
+- [x] Parquet handler for reading/writing Parquet files
+- [x] JSON handler for reading/writing JSON files
+- [x] Directory handler for directory-based operations
+- [x] File handler for direct file operations
+- [x] Handler registration via `@handler` decorator
+- [x] Automatic handler discovery
+- [x] Extension-based handler selection
+
+### 4. Configuration Management
+- [x] Layered configuration system (CLI > Case > Global > Defaults)
+- [x] YAML-based configuration files
+- [x] Environment variable support
+- [x] Configuration validation via Pydantic
+- [x] Path resolution and handling
+- [x] Plugin default configuration
+- [x] Configuration merging and priority
+- [x] Plugin-specific configuration filtering (only relevant fields passed to plugin models)
+
+### 5. Dependency Injection
+- [x] DI container for service management
+- [x] Service registration and resolution
+- [x] Multiple lifecycle modes (Singleton, Transient, Scoped)
+- [x] Constructor-based dependency injection
+- [x] Type-based service resolution
+- [x] Factory function support
+- [x] Core service registration (Logger, DataHub)
+
+### 6. Exception Handling
+- [x] Base framework exception (NexusError)
+- [x] Context-aware error reporting
+- [x] Exception chaining support
+- [x] Global exception handler
+- [x] Specific exception types for different error categories
+- [x] Error context preservation
+- [x] Detailed error logging
+
+### 7. CLI Commands
+- [x] Unified CLI interface via `data-replay` command
+- [x] Pipeline execution command
+- [x] Individual plugin execution command
+- [x] Demo data generation command
+- [x] Documentation generation command
+- [x] Case template support
+- [x] Command-line argument handling
+- [x] Help and version information
+
+### 8. Testing
+- [x] End-to-end test suite
+- [x] Unit tests for core components
+- [x] Integration tests for framework components
+- [x] Dependency testing
+- [x] Performance benchmarking
+- [x] DI container testing
+- [x] Test fixtures and helpers
+
+### 9. Utilities and Helpers
+- [x] Batch processing utilities
+- [x] Memory caching with TTL
+- [x] Path resolution utilities
+- [x] Type hint resolution
+- [x] Configuration loading utilities
+- [x] Logging initialization
+- [x] Data processing helpers
+
+### 10. Documentation
+- [x] Auto-generated plugin reference
+- [x] Data handler documentation
+- [x] Plugin I/O documentation
+- [x] Configuration parameter documentation
+- [x] README with usage instructions
+- [x] Code-level documentation
+- [x] Architecture documentation
+
+## Demo Plugins
+
+### 1. Latency Compensator
+- [x] Extended Kalman Filter implementation
+- [x] Constant Turn Rate and Velocity model
+- [x] Measurement data processing
+- [x] Latency compensation calculations
+- [x] State prediction algorithms
+- [x] Configurable algorithm parameters
+- [x] DataFrame-based data processing
+
+### 2. Frame Renderer
+- [x] Image frame generation
+- [x] Data visualization
+- [x] Coordinate transformation
+- [x] Dynamic camera positioning
+- [x] Grid rendering
+- [x] Data point visualization
+- [x] Batch processing support
+- [x] Configurable rendering parameters
+
+### 3. Video Creator
+- [x] Video generation from image frames
+- [x] Frame sequence processing
+- [x] Video encoding
+- [x] Configurable frame rate
+- [x] File output handling
+- [x] Error handling for video creation
+
+## Performance Features
+- [x] Memory caching with TTL expiration
+- [x] Batch processing for large datasets
+- [x] Parallel processing support
+- [x] Lazy loading for data sources
+- [x] Optimized configuration loading
+- [x] Cached type hint resolution
+- [x] Efficient data handling
+
+## Maintainability Features
+- [x] Modular architecture
+- [x] Clear separation of concerns
+- [x] Comprehensive test coverage
+- [x] Auto-generated documentation
+- [x] Consistent error handling
+- [x] Pythonic code principles
+- [x] Clear code documentation
+
+# 13. Plugin Discovery and Path Support
+
+## Plugin Discovery Mechanism
+
+The framework supports flexible plugin discovery through multiple mechanisms:
+
+### 1. Module-based Discovery
+- Plugins can be organized as Python packages/modules
+- Specified via `plugin_modules` in global configuration
+- Automatically scanned using `pkgutil.walk_packages`
+
+### 2. Path-based Discovery
+- Plugins can be loaded from filesystem paths
+- Supports both relative and absolute paths
+- Specified via `plugin_paths` in global configuration
+- Resolves relative paths against project root
+
+### 3. Handler Discovery
+- Data handlers are discovered similarly to plugins
+- Supports custom handler paths via `handler_paths` configuration
+- Built-in handlers are automatically loaded
+
+## Path Support Features
+
+### Relative Path Resolution
+- All relative paths are resolved against the project root directory
+- Consistent behavior across different execution contexts
+- Clear and predictable path resolution
+
+### Absolute Path Support
+- Direct support for absolute filesystem paths
+- No additional processing required for absolute paths
+- Useful for external plugin/handler locations
+
+### Configuration Integration
+- Path resolution integrated into configuration management
+- Works seamlessly with layered configuration system
+- Supports CLI, case, and global configuration levels
+
+# 14. Project Structure Reorganization Plan
+
+## Current Structure Issues (Fixed)
+1. Mixed responsibilities in `demo` directory (plugins + example data)
+2. Unclear separation between framework code and user content
+3. Inconsistent organization of templates and examples
+4. Configuration issues passing all global config fields to plugin models
+
+## Analysis of Mainstream Best Practices
+
+After reviewing mainstream Python project structures (Django, Flask, FastAPI, etc.), the following patterns emerge:
+
+1. **Framework code is organized within the src/ directory**
+2. **Plugins and extensions are part of the framework package, not separate top-level directories**
+3. **User content (cases, examples) is kept separate from framework code**
+4. **Configuration files are in dedicated directories**
+5. **Templates and documentation have clear locations**
+
+## Recommended Structure Following Best Practices
+```
+D:\Projects\data_replay/
+├── cases/                 # User cases and data (user content)
+│   └── demo/              # Demo case with data
+│       ├── case.yaml      # Case configuration
+│       ├── raw_data/      # Input data for demo
+│       └── output/        # Output directory for results
+├── config/                # Framework configuration
+│   └── global.yaml        # Global framework settings
+├── logs/                  # Log files
+├── src/
+│   └── nexus/             # Core framework code
+│       ├── __init__.py
+│       ├── cli.py         # Command-line interface
+│       ├── core/          # Core framework modules
+│       │   ├── config/
+│       │   ├── data/
+│       │   ├── di/
+│       │   ├── plugin/
+│       │   ├── refactoring/
+│       │   ├── services/
+│       │   ├── utils/
+│       │   └── ...
+│       ├── plugins/       # Built-in plugins (part of framework package)
+│       │   ├── __init__.py
+│       │   ├── prediction/    # Prediction plugins
+│       │   └── visualization/ # Visualization plugins
+│       └── handlers/      # Built-in data handlers (part of framework package)
+│           ├── __init__.py
+│           └── ...        # Handler implementations
+├── templates/             # Case templates
+│   └── demo_case.yaml     # Demo case template
+├── tests/                 # Test suite
+├── docs/                  # Documentation
+├── examples/              # Example cases and usage (if needed)
+├── README.md
+├── pyproject.toml
+└── claude.md
+```
+
+## Benefits of This Structure
+1. **Follows mainstream Python packaging conventions**
+2. **Keeps framework code within the src/ directory**
+3. **Integrates plugins and handlers as part of the framework package**
+4. **Separates user content (cases) from framework code**
+5. **Maintains clear organization of templates and configuration**
+6. **Provides a clean separation between framework internals and user content**
+7. **Aligns with setuptools and pip packaging standards**
+
+## Implementation Plan (Completed)
+1. ✅ Move demo plugins from `demo/` to `src/nexus/plugins/`
+2. ✅ Move data handlers from `src/nexus/core/data/handlers/` to `src/nexus/handlers/`
+3. ✅ Keep user cases in `cases/` directory
+4. ✅ Keep templates in `templates/` directory
+5. ✅ Update import paths and configuration accordingly
+6. ✅ Fixed configuration passing to prevent all global config fields from being passed to plugin models
+7. ✅ Updated global configuration to only include `nexus.plugins` module and handler paths
+8. ✅ Verified all functionality works correctly after reorganization

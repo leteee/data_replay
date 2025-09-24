@@ -3,8 +3,6 @@ log_level: "INFO"
 log_file: "./logs/app.log"
 plugin_enable: True
 plugin_modules:
-  - demo
-plugin_paths:
-  - "./demo"
+  - nexus.plugins
 handler_paths:
-  - "./demo"
+  - "./src/nexus/handlers"
