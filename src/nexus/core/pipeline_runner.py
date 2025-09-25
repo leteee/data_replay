@@ -22,9 +22,7 @@ from .exceptions import (
     PluginError
 )
 from .exception_handler import handle_exception
-from .di import container, LoggerInterface, DataHubInterface, ConfigManagerInterface, ServiceNotFoundError
-from .di.container import ServiceNotFoundError
-from .di.adapters import LoggerAdapter, DataHubAdapter, ConfigManagerAdapter
+from .di.container_new import DIContainer
 from .services.io_discovery import IODiscoveryService
 from .services.type_checker import TypeChecker
 from .services.plugin_execution import PluginExecutionService
@@ -39,18 +37,19 @@ class PipelineRunner:
     and handling their output.
     """
 
-    def __init__(self, context: NexusContext):
+    def __init__(self, context: NexusContext, di_container: DIContainer = None):
         self._context = context
-        # Use DI container for services if available, otherwise use direct injection
-        self._logger = self._resolve_service(LoggerInterface, context.logger)
-        self._config_manager = self._resolve_service(ConfigManagerInterface, None)
-            
-        # Create service instances
+        self._container = di_container
+        
+        # Use context logger directly
+        self._logger = context.logger
+        
+        # Create service instances, potentially using DI container if available
         self._io_discovery_service = IODiscoveryService(self._logger)
         self._type_checker = TypeChecker(self._logger)
         self._plugin_execution_service = PluginExecutionService(self._logger)
         self._configuration_service = ConfigurationService(self._logger)
-            
+        
         plugin_modules = self._context.run_config.get("plugin_modules", [])
         if not plugin_modules:
             self._logger.warning("No 'plugin_modules' defined in config. No plugins will be loaded.")
@@ -60,18 +59,6 @@ class PipelineRunner:
             self._context.project_root,
             self._context.run_config.get("plugin_paths", ["./demo"])
         )
-        
-    def _resolve_service(self, service_type, default_value):
-        """Resolve a service from the DI container or return a default value."""
-        try:
-            return container.resolve(service_type)
-        except ServiceNotFoundError:
-            # This is expected if the service is not registered
-            return default_value
-        except Exception as e:
-            # Log unexpected errors but continue with default value
-            self._logger.warning(f"Unexpected error resolving {service_type.__name__} from DI container: {e}")
-            return default_value
 
     def _preflight_type_check(self, data_source_name: str, source_config: dict, handler: DataHandler) -> bool:
         """

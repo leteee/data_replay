@@ -12,6 +12,7 @@ dependencies = [
     "pytest",
     "pytest-dependency",
     "pyarrow",
+    "dependency-injector",
 ]
 
 [build-system]
