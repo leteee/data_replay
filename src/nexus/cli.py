@@ -140,8 +140,8 @@ def pipeline(
     try:
         nexus_context = _setup_nexus_context(case, global_config)
         
-        from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
-        runner = PipelineRunnerFactory.create(nexus_context)
+        from nexus.core.pipeline_runner_factory import create_pipeline_runner
+        runner = create_pipeline_runner(nexus_context)
         runner.run()
         logger.info(f"====== Case '{nexus_context.case_path.name}' finished successfully. ======")
     except NexusError as e:
@@ -179,8 +179,8 @@ def plugin(
     try:
         nexus_context = _setup_nexus_context(case, global_config)
         
-        from nexus.core.pipeline_runner_factory import PipelineRunnerFactory
-        runner = PipelineRunnerFactory.create(nexus_context)
+        from nexus.core.pipeline_runner_factory import create_pipeline_runner
+        runner = create_pipeline_runner(nexus_context)
         runner.run(plugin_name=name)
         logger.info(f"====== Plugin '{name}' finished successfully. ======")
     except NexusError as e:

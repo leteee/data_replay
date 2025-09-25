@@ -2,14 +2,8 @@
 Services module for the Nexus framework.
 """
 
-from .io_discovery import IODiscoveryService
-from .type_checker import TypeChecker
-from .plugin_execution import PluginExecutionService
-from .configuration import ConfigurationService
+# This module has been refactored - most services are now function-based
+# Only keeping essential classes here if any remain
 
 __all__ = [
-    "IODiscoveryService",
-    "TypeChecker",
-    "PluginExecutionService",
-    "ConfigurationService"
 ]

@@ -23,10 +23,10 @@ from .exceptions import (
 )
 from .exception_handler import handle_exception
 
-from .services.io_discovery import IODiscoveryService
-from .services.type_checker import TypeChecker
-from .services.plugin_execution import PluginExecutionService
-from .services.configuration import ConfigurationService
+from .discovery.io_discovery import discover_io_declarations
+from .config.utils import load_case_config, filter_pipeline_steps, create_config_manager
+from .services.type_checker import preflight_type_check
+from .services.plugin_execution import execute_plugin, handle_plugin_output
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +43,7 @@ class PipelineRunner:
         # Use context logger directly
         self._logger = context.logger
         
-        # Create service instances
-        self._io_discovery_service = IODiscoveryService(self._logger)
-        self._type_checker = TypeChecker(self._logger)
-        self._plugin_execution_service = PluginExecutionService(self._logger)
-        self._configuration_service = ConfigurationService(self._logger)
+        
         
         plugin_modules = self._context.run_config.get("plugin_modules", [])
         if not plugin_modules:
@@ -72,7 +68,7 @@ class PipelineRunner:
         Returns:
             True if type check passes, False otherwise
         """
-        return self._type_checker.preflight_type_check(data_source_name, source_config, handler)
+        return preflight_type_check(self._logger, data_source_name, source_config, handler)
 
     def _discover_io_declarations(self, pipeline_steps: List[Dict[str, Any]], case_config: dict) -> Tuple[Dict[str, Any], Dict[str, Dict[str, DataSource]], Dict[str, Dict[str, DataSink]]]:
         """
@@ -84,7 +80,7 @@ class PipelineRunner:
             - A dictionary mapping plugin names to their DataSource fields.
             - A dictionary mapping plugin names to their DataSink fields.
         """
-        return self._io_discovery_service.discover_io_declarations(pipeline_steps, case_config)
+        return discover_io_declarations(self._logger, pipeline_steps, case_config)
 
     def run(self, plugin_name: str | None = None) -> None:
         if plugin_name:
@@ -94,10 +90,10 @@ class PipelineRunner:
 
         # --- 1. Configuration Setup Phase ---
         # We need the raw case_config to resolve the io_mapping
-        raw_case_config = self._configuration_service.load_case_config(self._context.case_path)
+        raw_case_config = load_case_config(self._context.case_path)
         
         pipeline_steps = raw_case_config.get("pipeline", [])
-        pipeline_steps = self._configuration_service.filter_pipeline_steps(pipeline_steps, plugin_name)
+        pipeline_steps = filter_pipeline_steps(pipeline_steps, plugin_name)
 
         if not pipeline_steps:
             if plugin_name:
@@ -112,7 +108,7 @@ class PipelineRunner:
 
         # --- 1b. Config Merging ---
         # Create config manager directly
-        config_manager = self._configuration_service.create_config_manager(
+        config_manager = create_config_manager(
             project_root=self._context.project_root,
             case_path=self._context.case_path,
             discovered_sources=discovered_sources,
@@ -203,7 +199,8 @@ class PipelineRunner:
                     self._logger.warning(f"DataSink '{sink_marker.name}' for plugin '{p_name}' has no path defined in io_mapping.")
 
             # --- 2d. Execute Plugin ---
-            return_value = self._plugin_execution_service.execute_plugin(
+            return_value = execute_plugin(
+                logger=self._logger,
                 plugin_name=p_name,
                 plugin_spec=plugin_spec,
                 config_object=config_object,
@@ -214,7 +211,8 @@ class PipelineRunner:
             )
 
             # --- 2e. Handle Output ---
-            self._plugin_execution_service.handle_plugin_output(
+            handle_plugin_output(
+                logger=self._logger,
                 plugin_name=p_name,
                 return_value=return_value,
                 sinks_for_plugin=sinks_for_plugin,

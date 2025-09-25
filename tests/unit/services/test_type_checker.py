@@ -1,32 +1,20 @@
 """
-Unit tests for the type checker service.
+Unit tests for the type checker functions.
 """
 
 import pandas as pd
 from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, patch
+import logging
 
-from nexus.core.services.type_checker import TypeChecker
+from nexus.core.services.type_checker import preflight_type_check
 from nexus.handlers.base import DataHandler
-
-
-def test_type_checker_initialization():
-    """Test TypeChecker initialization."""
-    # Test with default logger
-    checker = TypeChecker()
-    assert checker.logger is not None
-    
-    # Test with custom logger
-    import logging
-    custom_logger = logging.getLogger("test")
-    checker_with_logger = TypeChecker(logger=custom_logger)
-    assert checker_with_logger.logger == custom_logger
 
 
 def test_preflight_type_check_success():
     """Test successful pre-flight type check."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with expected type
     source_config = {
@@ -38,7 +26,8 @@ def test_preflight_type_check_success():
     mock_handler.produced_type = pd.DataFrame
     
     # Test type check
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler
@@ -47,10 +36,9 @@ def test_preflight_type_check_success():
     # Should pass type check
     assert result is True
 
-
 def test_preflight_type_check_no_expected_type():
     """Test pre-flight type check with no expected type."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with no expected type
     source_config = {}
@@ -59,7 +47,8 @@ def test_preflight_type_check_no_expected_type():
     mock_handler = MagicMock(spec=DataHandler)
     
     # Test type check
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler
@@ -68,10 +57,9 @@ def test_preflight_type_check_no_expected_type():
     # Should skip type check and return True
     assert result is True
 
-
 def test_preflight_type_check_no_produced_type():
     """Test pre-flight type check with handler that has no produced type."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with expected type
     source_config = {
@@ -83,7 +71,8 @@ def test_preflight_type_check_no_produced_type():
     del mock_handler.produced_type  # Remove produced_type attribute
     
     # Test type check
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler
@@ -92,10 +81,9 @@ def test_preflight_type_check_no_produced_type():
     # Should skip type check and return True
     assert result is True
 
-
 def test_preflight_type_check_exact_match():
     """Test pre-flight type check with exact type match."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with expected type
     source_config = {
@@ -107,7 +95,8 @@ def test_preflight_type_check_exact_match():
     mock_handler.produced_type = pd.DataFrame
     
     # Test type check
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler
@@ -115,11 +104,10 @@ def test_preflight_type_check_exact_match():
     
     # Should pass type check
     assert result is True
-
 
 def test_preflight_type_check_pandas_dataframe():
     """Test pre-flight type check with pandas DataFrame special case."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with expected type
     source_config = {
@@ -131,7 +119,8 @@ def test_preflight_type_check_pandas_dataframe():
     mock_handler.produced_type = pd.DataFrame
     
     # Test type check
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler
@@ -140,10 +129,9 @@ def test_preflight_type_check_pandas_dataframe():
     # Should pass type check
     assert result is True
 
-
 def test_preflight_type_check_mismatch():
     """Test pre-flight type check with type mismatch."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with expected type
     source_config = {
@@ -155,7 +143,8 @@ def test_preflight_type_check_mismatch():
     mock_handler.produced_type = pd.DataFrame
     
     # Test type check - should fail but not raise exception
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler
@@ -164,10 +153,9 @@ def test_preflight_type_check_mismatch():
     # Should fail type check but return False (not raise exception)
     assert result is False
 
-
 def test_preflight_type_check_handler_exception():
     """Test pre-flight type check when handler raises exception."""
-    checker = TypeChecker()
+    logger = logging.getLogger("test")
     
     # Create mock data source config with expected type
     source_config = {
@@ -179,7 +167,8 @@ def test_preflight_type_check_handler_exception():
     del mock_handler.produced_type  # Remove produced_type attribute
     
     # Test type check - should handle missing attribute gracefully
-    result = checker.preflight_type_check(
+    result = preflight_type_check(
+        logger=logger,
         data_source_name="test_source",
         source_config=source_config,
         handler=mock_handler

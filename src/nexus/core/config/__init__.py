@@ -1,9 +1,15 @@
 """
-Configuration management module for the Nexus framework.
+Config utilities module for the Nexus framework.
 """
 
-from .manager import ConfigManager
+from .utils import (
+    load_case_config,
+    filter_pipeline_steps,
+    create_config_manager
+)
 
 __all__ = [
-    "ConfigManager",
+    "load_case_config",
+    "filter_pipeline_steps",
+    "create_config_manager"
 ]
