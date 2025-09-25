@@ -22,7 +22,7 @@ from .exceptions import (
     PluginError
 )
 from .exception_handler import handle_exception
-from .di.container_new import DIContainer
+
 from .services.io_discovery import IODiscoveryService
 from .services.type_checker import TypeChecker
 from .services.plugin_execution import PluginExecutionService
@@ -37,14 +37,13 @@ class PipelineRunner:
     and handling their output.
     """
 
-    def __init__(self, context: NexusContext, di_container: DIContainer = None):
+    def __init__(self, context: NexusContext):
         self._context = context
-        self._container = di_container
         
         # Use context logger directly
         self._logger = context.logger
         
-        # Create service instances, potentially using DI container if available
+        # Create service instances
         self._io_discovery_service = IODiscoveryService(self._logger)
         self._type_checker = TypeChecker(self._logger)
         self._plugin_execution_service = PluginExecutionService(self._logger)
@@ -112,17 +111,13 @@ class PipelineRunner:
         discovered_sources, plugin_sources, plugin_sinks = self._discover_io_declarations(pipeline_steps, raw_case_config)
 
         # --- 1b. Config Merging ---
-        if self._config_manager is not None:
-            # Use DI-injected config manager
-            config_manager = self._config_manager
-        else:
-            # Create config manager directly
-            config_manager = self._configuration_service.create_config_manager(
-                project_root=self._context.project_root,
-                case_path=self._context.case_path,
-                discovered_sources=discovered_sources,
-                cli_args=self._context.run_config.get('cli_args', {})
-            )
+        # Create config manager directly
+        config_manager = self._configuration_service.create_config_manager(
+            project_root=self._context.project_root,
+            case_path=self._context.case_path,
+            discovered_sources=discovered_sources,
+            cli_args=self._context.run_config.get('cli_args', {})
+        )
 
         # --- 1c. Data Loading & Pre-flight Type Checking ---
         final_data_sources = config_manager.get_data_sources()

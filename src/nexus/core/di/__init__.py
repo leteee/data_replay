@@ -1,29 +1,9 @@
 """
-Dependency Injection module for the Nexus framework.
+Dependency Injection module for the Nexus framework using dependency-injector.
 """
 
-from .container import DIContainer, container, ServiceNotFoundError, ServiceLifeCycle
-from .services import LoggerInterface, DataHubInterface, ConfigManagerInterface, PluginExecutorInterface, PipelineRunnerInterface
-from .adapters import LoggerAdapter, DataHubAdapter, ConfigManagerAdapter
-from .exceptions import DIException
-from .testing import TestDIContainer, MockLogger, MockDataHub
+from .container_new import DIContainer
 
 __all__ = [
     "DIContainer",
-    "container",
-    "ServiceNotFoundError",
-    "ServiceLifeCycle",
-    "LoggerInterface",
-    "DataHubInterface",
-    "ConfigManagerInterface",
-    "PluginExecutorInterface",
-    "PipelineRunnerInterface",
-    "LoggerAdapter",
-    "DataHubAdapter",
-    "ConfigManagerAdapter",
-    "DIException",
-    
-    "TestDIContainer",
-    "MockLogger",
-    "MockDataHub"
 ]

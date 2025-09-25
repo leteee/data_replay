@@ -1,6 +1,5 @@
 """
-New Dependency Injection Container using dependency-injector library
-to replace the custom DI framework.
+Dependency Injection Container using dependency-injector library.
 """
 
 from dependency_injector import containers, providers
@@ -18,7 +17,3 @@ class DIContainer(containers.DeclarativeContainer):
     
     # Configuration that will be provided at runtime
     config = providers.Configuration()
-    
-    # Core services will be registered at runtime
-    # We'll handle this differently to avoid circular imports
-    pass
