@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from nexus.core.services.type_checker import TypeChecker
-from nexus.core.data.handlers.base import DataHandler
+from nexus.handlers.base import DataHandler
 
 
 def test_type_checker_initialization():
