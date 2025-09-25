@@ -24,14 +24,29 @@ A flexible, configuration-driven Python framework for building robust, extensibl
 .
 ├── cases/                # Contains different data processing cases (e.g., demo).
 ├── config/               # Global framework configuration.
-├── demo/                 # Source code for the demo plugins.
+├── docs/                 # Documentation files
+│   └── REFERENCE.md      # Auto-generated reference for all plugins and handlers.
 ├── logs/                 # Directory for log files.
 ├── src/
 │   └── nexus/            # Core framework source code.
+│       ├── __init__.py
+│       ├── cli.py        # Command-line interface
+│       ├── core/         # Core framework modules
+│       │   ├── config/
+│       │   ├── data/
+│       │   ├── di/
+│       │   ├── plugin/
+│       │   └── ...
+│       ├── plugins/      # Built-in plugins (part of framework package)
+│       │   ├── __init__.py
+│       │   ├── prediction/    # Prediction plugins
+│       │   └── visualization/ # Visualization plugins
+│       └── handlers/     # Built-in data handlers (part of framework package)
+│           ├── __init__.py
+│           └── ...        # Handler implementations
 ├── templates/            # Templates for generating new cases.
 ├── tests/
 ├── .gitignore
-├── REFERENCE.md          # Auto-generated reference for all plugins and handlers.
 ├── README.md
 └── pyproject.toml        # Project configuration and dependencies.
 ```
@@ -88,7 +103,7 @@ data-replay plugin "Video Creator" --case demo
 
 ### 4. Generate Documentation
 
-Scan all registered plugins and handlers and update the `REFERENCE.md` file.
+Scan all registered plugins and handlers and generate the `REFERENCE.md` file in the `docs/` directory.
 
 ```bash
 data-replay docs

@@ -94,8 +94,3 @@ Data Handlers are responsible for reading and writing different data formats.
 
 | Name | Supported Extensions | Description |
 |------|----------------------|-------------|
-| `csv` | `.csv` | Handles reading and writing CSV files. |
-| `dir` | N/A | Handler for directory-based data sources. |
-| `file` | N/A | A handler that returns a file handle (file-like object) for direct streaming or processing. |
-| `json` | `.json` | Handles reading and writing JSON files. |
-| `parquet` | `.parquet` | Handles reading and writing Parquet files. |

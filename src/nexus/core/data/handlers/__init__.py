@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Type, Optional
 import logging
 
-from .base import DataHandler
-from .decorator import HANDLER_REGISTRY
-from .discovery import discover_handlers
+# Import the handler registry and utilities from the new location
+from ....handlers.base import DataHandler
+from ....handlers.decorator import HANDLER_REGISTRY
 
 _handlers_discovered = False
 _discovery_context = None
@@ -19,7 +19,7 @@ def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
     """
     Gets an instantiated handler for a given path or handler name.
 
-    This function uses the new decorator-based registry.
+    This function uses the new decorator-based registry from nexus.handlers.
     Discovery of handlers is performed automatically on the first call.
 
     Args:
@@ -38,6 +38,8 @@ def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
         # This check ensures that discovery only runs once per process.
         project_root = _discovery_context.project_root if _discovery_context else None
         handler_paths = _discovery_context.run_config.get("handler_paths", []) if _discovery_context else []
+        # Use the discovery mechanism from nexus.handlers
+        from ....handlers.discovery import discover_handlers
         discover_handlers(logger, project_root, handler_paths)
         _handlers_discovered = True
 
@@ -52,7 +54,7 @@ def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
     else:
         lookup_key = path.suffix.lower()
         if not lookup_key:
-            raise ValueError(f"Cannot determine handler for path with no file extension: {path}")
+            raise ValueError(f"Cannot determine handler for lookup key with no file extension: {path}")
         handler_cls = HANDLER_REGISTRY.get(lookup_key)
 
     if not handler_cls:

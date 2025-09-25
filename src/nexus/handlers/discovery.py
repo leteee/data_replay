@@ -39,8 +39,8 @@ def discover_handlers(logger: Logger, project_root: Path = None, additional_path
             continue
         
         try:
-            # The package is nexus.core.data.handlers
-            full_module_name = f"nexus.core.data.handlers.{module_name}"
+            # The package is nexus.handlers
+            full_module_name = f"nexus.handlers.{module_name}"
             importlib.import_module(full_module_name)
             logger.debug(f"Successfully imported handler module: {module_name}")
         except Exception as e:

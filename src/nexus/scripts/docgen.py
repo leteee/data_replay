@@ -56,7 +56,9 @@ def generate_plugin_documentation():
     This refactored version uses the decorator registries for discovery.
     """
     project_root = Path(__file__).resolve().parent.parent.parent.parent
-    output_file = project_root / 'REFERENCE.md'
+    docs_dir = project_root / 'docs'
+    docs_dir.mkdir(exist_ok=True)
+    output_file = docs_dir / 'REFERENCE.md'
     
     # 1. Discover everything
     import logging

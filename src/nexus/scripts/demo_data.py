@@ -143,8 +143,7 @@ def generate_data():
 
 from nexus.core.plugin.decorator import PLUGIN_REGISTRY
 from nexus.core.plugin.discovery import discover_plugins
-from nexus.core.data.handlers import get_handler
-from nexus.core.data.handlers.discovery import discover_handlers
+from nexus.handlers.discovery import discover_handlers
 from nexus.core.data.hub import DataHub
 from nexus.core.context import PluginContext
 from logging import Logger
