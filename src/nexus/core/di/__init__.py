@@ -1,9 +1,8 @@
 """
-Dependency Injection module for the Nexus framework using dependency-injector.
+Dependency Injection module for the Nexus framework.
 """
-
-from .container_new import DIContainer
+# No DI container needed in the final implementation
+# The dependency-injector library was used in refactoring but not in the final clean version
 
 __all__ = [
-    "DIContainer",
 ]
