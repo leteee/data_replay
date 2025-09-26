@@ -5,6 +5,7 @@ Utilities for optimized data processing in the Nexus framework.
 import logging
 import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import pandas as pd
 import numpy as np
@@ -30,7 +31,6 @@ class DataProcessor:
         self.cache_enabled = cache_enabled
         self.file_cache = get_file_cache() if cache_enabled else None
         
-    @memory_cache(ttl=300)  # Cache for 5 minutes
     def optimize_dataframe_access(self, df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
         """
         Optimize DataFrame column access by selecting only needed columns.
@@ -50,7 +50,8 @@ class DataProcessor:
         if existing_columns:
             return df[existing_columns].copy()
         else:
-            return df.copy()
+            # Return empty DataFrame with same index
+            return df.iloc[:0].copy()
             
     def vectorize_operations(self, df: pd.DataFrame, operations: Dict[str, Callable]) -> pd.DataFrame:
         """

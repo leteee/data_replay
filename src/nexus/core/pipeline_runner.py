@@ -297,73 +297,28 @@ class PipelineRunner:
             else:
                 self._logger.warning(f"DataSink '{sink_marker.name}' for plugin '{plugin_name}' has no path defined in io_mapping.")
 
-        # Execute the plugin directly (simplified approach)
-        plugin_context = PluginContext(
-            data_hub=self._context.data_hub, logger=self._logger,
-            project_root=self._context.project_root, case_path=self._context.case_path,
-            config=config_object,
-            output_path=resolved_output_path
+        # Execute the plugin
+        return_value = execute_plugin(
+            logger=self._logger,
+            plugin_name=plugin_name,
+            plugin_spec=plugin_spec,
+            config_object=config_object,
+            data_hub=self._context.data_hub,
+            case_path=self._context.case_path,
+            project_root=self._context.project_root,
+            resolved_output_path=resolved_output_path
         )
 
-        try:
-            executor = PluginExecutor(plugin_spec, plugin_context)
-            return_value = executor.execute()
-        except Exception as e:
-            error_context = {
-                "plugin_name": plugin_name,
-                "plugin_spec": plugin_spec.name if plugin_spec else "Unknown"
-            }
-            exc = PluginError(
-                f"A critical error occurred in plugin '{plugin_name}'. Halting pipeline."
-            )
-            # Add context to the exception manually since RuntimeError doesn't accept it in constructor
-            if hasattr(exc, 'context'):
-                exc.context.update(error_context)
-            else:
-                exc.context = error_context
-            handle_exception(exc, error_context)
-            raise exc
-
-        # Handle plugin output directly (simplified approach)
-        if sinks_for_plugin:
-            if len(sinks_for_plugin) > 1:
-                self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks defined. Only one is supported per plugin. Using the first one found.")
-
-            # Get the first (and only) sink
-            sink_field, sink_marker = list(sinks_for_plugin.items())[0]
-
-            if return_value is None:
-                # This is now expected for plugins that write directly to disk
-                self._logger.debug(f"Plugin '{plugin_name}' has a DataSink for field '{sink_field}' but returned None.")
-            else:
-                self._logger.info(f"Plugin '{plugin_name}' produced output. Writing to sink: {sink_marker.name}")
-                try:
-                    # We need to resolve the path relative to the case directory
-                    # Get the io_mapping from case_config
-                    io_mapping = raw_case_config.get("io_mapping", {})
-                    sink_config = io_mapping.get(sink_marker.name, {})
-                    output_path_str = sink_config.get("path", "")
-                    output_path = self._context.case_path / output_path_str
-                    handler_args = sink_config.get("handler_args", sink_marker.handler_args)
-                    self._context.data_hub.save(
-                        data=return_value,
-                        path=output_path,
-                        handler_args=handler_args
-                    )
-                    self._logger.debug(f"Successfully wrote output to {output_path}")
-                except Exception as e:
-                    error_context = {
-                        "plugin_name": plugin_name,
-                        "sink_name": sink_marker.name if sink_marker else "Unknown",
-                        "output_path": str(output_path) if 'output_path' in locals() else "Unknown"
-                    }
-                    exc = NexusError(
-                        f"Failed to write output for plugin '{plugin_name}' to {sink_marker.name if sink_marker else 'Unknown'}: {e}",
-                        context=error_context,
-                        cause=e
-                    )
-                    handle_exception(exc, error_context)
-                    raise exc
+        # Handle the plugin output
+        handle_plugin_output(
+            logger=self._logger,
+            plugin_name=plugin_name,
+            return_value=return_value,
+            sinks_for_plugin=sinks_for_plugin,
+            raw_case_config=raw_case_config,
+            case_path=self._context.case_path,
+            data_hub=self._context.data_hub
+        )
 
     def _resolve_output_path(self, plugin_name: str, plugin_sinks: Dict[str, Dict[str, DataSink]], 
                              raw_case_config: dict) -> Path | None:
