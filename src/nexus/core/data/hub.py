@@ -72,21 +72,52 @@ class DataHub:
 
     def register(self, name: str, data: Any):
         """
-        Registers a data object with the Hub and persists it if a path is registered.
+        Registers a data object with the Hub in memory only.
+        To persist to disk, use persist_to_registry or save method explicitly.
         """
         self._data[name] = data
         logger.debug(f"Data '{name}' registered in memory.")
 
+    def persist_to_registry(self, name: str):
+        """
+        Persists data to the path registered in the registry.
+        
+        Args:
+            name: Name of the data to persist
+        """
+        if name not in self._data:
+            raise KeyError(f"Data '{name}' not found in memory. Cannot persist.")
+        
+        if name not in self._registry:
+            raise KeyError(f"Path for data '{name}' not registered in the registry. Cannot persist.")
+        
+        data = self._data[name]
+        source = self._registry[name]
+        path = source.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            handler = self._get_handler_instance(source)
+            handler.save(data, path)
+            logger.info(f"Data '{name}' persisted to: {path}")
+        except Exception as e:
+            logger.error(f"Failed to persist data '{name}' to {path}: {e}")
+            raise
+
+    def register_and_persist(self, name: str, data: Any):
+        """
+        Registers a data object with the Hub and persists it to the registered path if one exists.
+        
+        Args:
+            name: Name to register the data under
+            data: Data object to store and persist
+        """
+        # First register in memory
+        self.register(name, data)
+        
+        # Then persist to registry if path is registered
         if name in self._registry:
-            source = self._registry[name]
-            path = source.path
-            path.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                handler = self._get_handler_instance(source)
-                handler.save(data, path)
-                logger.info(f"Data '{name}' automatically persisted to: {path}")
-            except Exception as e:
-                logger.error(f"Failed to persist data '{name}' to {path}: {e}")
+            self.persist_to_registry(name)
 
     def get(self, name: str) -> Any:
         """
