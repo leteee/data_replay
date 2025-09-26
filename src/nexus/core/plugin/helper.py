@@ -9,7 +9,8 @@ from .executor import PluginExecutor
 from .spec import PluginSpec
 from .decorator import PLUGIN_REGISTRY
 from ..data.hub import DataHub
-from ..config.manager import ConfigManager, load_yaml
+from ..config.functional import create_configuration_context, get_merged_data_sources, get_plugin_configuration
+from ..config.manager import load_yaml
 from .discovery import discover_plugins
 
 logger = logging.getLogger(__name__)
@@ -49,17 +50,18 @@ def run_single_plugin_by_name(plugin_name: str, case_name: str, project_root: Pa
 
         case_config = load_yaml(case_path / "case.yaml")
 
-        # Instantiate the centralized ConfigManager
-        config_manager = ConfigManager(
-            global_config=global_config,
-            case_config=case_config,
+        # Create configuration context using functional approach
+        config_context = create_configuration_context(
+            project_root=project_root,
+            case_path=case_path,
             plugin_registry=PLUGIN_REGISTRY,
+            discovered_data_sources={},  # TODO: Populate discovered data sources
             cli_args={}
         )
 
         # --- 2. Context and Execution Phase ---
         data_hub = DataHub(case_path=case_path, logger=logger)
-        data_hub.add_data_sources(config_manager.get_data_sources())
+        data_hub.add_data_sources(get_merged_data_sources(config_context))
 
         # Find the plugin's specific params from the case file
         case_plugin_params = {}
@@ -68,9 +70,10 @@ def run_single_plugin_by_name(plugin_name: str, case_name: str, project_root: Pa
                 case_plugin_params = step.get("params", {})
                 break
         
-        final_plugin_config = config_manager.get_plugin_config(
+        final_plugin_config = get_plugin_configuration(
             plugin_name=plugin_name,
-            case_plugin_config=case_plugin_params
+            case_plugin_config=case_plugin_params,
+            config_context=config_context
         )
 
         plugin_context = PluginContext(

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 import pandas as pd
 
-from .config.manager import load_yaml
+from .config.functional import load_yaml, create_configuration_context, get_data_sources, get_plugin_config
 from .context import NexusContext, PluginContext
 from .data.hub import DataHub
 from .data.handlers.base import DataHandler
