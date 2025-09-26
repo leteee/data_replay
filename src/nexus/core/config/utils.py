@@ -6,8 +6,9 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List
 from functools import lru_cache
+import json
 
-from ..config.manager import ConfigManager, load_yaml
+from .functional import load_yaml, create_configuration_context, get_data_sources, get_plugin_config
 from ..plugin.decorator import PLUGIN_REGISTRY
 
 
@@ -58,10 +59,10 @@ def filter_pipeline_steps(pipeline_steps: List[Dict[str, Any]],
     return pipeline_steps
 
 
-def create_config_manager(project_root: Path, case_path: Path, 
-                        discovered_sources: Dict, cli_args: Dict) -> ConfigManager:
+def create_config_context(project_root: Path, case_path: Path, 
+                         discovered_sources: Dict, cli_args: Dict) -> Dict[str, Any]:
     """
-    Create a ConfigManager instance.
+    Create a configuration context with all necessary information.
     
     Args:
         project_root: Path to the project root
@@ -70,12 +71,58 @@ def create_config_manager(project_root: Path, case_path: Path,
         cli_args: Command line arguments
         
     Returns:
-        ConfigManager instance
+        Configuration context dictionary
     """
-    return ConfigManager.from_sources(
+    return create_configuration_context(
         project_root=project_root,
         case_path=case_path,
         plugin_registry=PLUGIN_REGISTRY,
         discovered_data_sources=discovered_sources,
         cli_args=cli_args
+    )
+
+
+def get_merged_data_sources(config_context: Dict[str, Any]) -> dict:
+    """
+    Get the final merged data sources from configuration context.
+    
+    Args:
+        config_context: Configuration context created by create_config_context
+        
+    Returns:
+        Merged data sources dictionary
+    """
+    # Create hashable representations for caching
+    discovered_sources_hash = json.dumps(config_context["discovered_data_sources"], sort_keys=True)
+    global_config_hash = json.dumps(config_context["global_config"], sort_keys=True)
+    case_config_hash = json.dumps(config_context["case_config"], sort_keys=True)
+    
+    return get_data_sources(
+        discovered_sources_hash=discovered_sources_hash,
+        global_config_hash=global_config_hash,
+        case_config_hash=case_config_hash,
+        case_path_str=str(config_context["case_path"]),
+        project_root_str=str(config_context["project_root"])
+    )
+
+
+def get_plugin_configuration(plugin_name: str, case_plugin_config: dict, 
+                            config_context: Dict[str, Any]) -> dict:
+    """
+    Get the final plugin configuration.
+    
+    Args:
+        plugin_name: Name of the plugin
+        case_plugin_config: Case-specific plugin configuration
+        config_context: Configuration context created by create_config_context
+        
+    Returns:
+        Final plugin configuration dictionary
+    """
+    return get_plugin_config(
+        plugin_name=plugin_name,
+        case_plugin_config=case_plugin_config,
+        global_config=config_context["global_config"],
+        plugin_defaults_map=config_context["plugin_defaults_map"],
+        plugin_registry=config_context["plugin_registry"]
     )

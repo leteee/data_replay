@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 import pandas as pd
 
-from .config.manager import ConfigManager, load_yaml
+from .config.manager import load_yaml
 from .context import NexusContext, PluginContext
 from .data.hub import DataHub
 from .data.handlers.base import DataHandler
@@ -24,7 +24,13 @@ from .exceptions import (
 from .exception_handler import handle_exception
 
 from .discovery.io_discovery import discover_io_declarations
-from .config.utils import load_case_config, filter_pipeline_steps, create_config_manager
+from .config.utils import (
+    load_case_config, 
+    filter_pipeline_steps, 
+    create_config_context,
+    get_merged_data_sources,
+    get_plugin_configuration
+)
 from .services.type_checker import preflight_type_check
 from .services.plugin_execution import execute_plugin, handle_plugin_output
 
@@ -147,18 +153,18 @@ class PipelineRunner:
         """
         return self._discover_io_declarations(pipeline_steps, raw_case_config)
 
-    def _prepare_environment(self, discovered_sources: Dict[str, Any]) -> ConfigManager:
+    def _prepare_environment(self, discovered_sources: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Prepare the execution environment by creating config manager and loading data.
+        Prepare the execution environment by creating configuration context.
         
         Args:
             discovered_sources: Discovered data sources
             
         Returns:
-            ConfigManager instance
+            Configuration context dictionary
         """
-        # Create config manager
-        config_manager = create_config_manager(
+        # Create configuration context
+        config_context = create_config_context(
             project_root=self._context.project_root,
             case_path=self._context.case_path,
             discovered_sources=discovered_sources,
@@ -166,7 +172,7 @@ class PipelineRunner:
         )
 
         # Load data into DataHub
-        final_data_sources = config_manager.get_data_sources()
+        final_data_sources = get_merged_data_sources(config_context)
         self._context.data_hub.add_data_sources(final_data_sources)
         self._logger.info(f"DataHub initialized with {len(final_data_sources)} merged data sources.")
         
@@ -177,11 +183,11 @@ class PipelineRunner:
                 self._preflight_type_check(name, source_config, handler)
             except Exception as e:
                 self._logger.warning(f"Could not perform pre-flight type check for '{name}': {e}")
-        
-        return config_manager
+
+        return config_context
 
     def _execute_pipeline(self, pipeline_steps: List[Dict[str, Any]], plugin_sources: Dict[str, Dict[str, DataSource]], 
-                         plugin_sinks: Dict[str, Dict[str, DataSink]], config_manager: ConfigManager, raw_case_config: dict) -> None:
+                         plugin_sinks: Dict[str, Dict[str, DataSink]], config_context: Dict[str, Any], raw_case_config: dict) -> None:
         """
         Execute all plugins in the pipeline.
         
@@ -189,7 +195,7 @@ class PipelineRunner:
             pipeline_steps: List of pipeline step configurations
             plugin_sources: Mapping of plugin names to their DataSource fields
             plugin_sinks: Mapping of plugin names to their DataSink fields
-            config_manager: ConfigManager instance
+            config_context: Configuration context dictionary
             raw_case_config: Raw case configuration
         """
         for step_config in pipeline_steps:
@@ -200,7 +206,7 @@ class PipelineRunner:
             self._logger.debug(f"Preparing plugin: {p_name}")
             
             try:
-                self._execute_single_plugin(p_name, step_config, plugin_sources, plugin_sinks, config_manager, raw_case_config)
+                self._execute_single_plugin(p_name, step_config, plugin_sources, plugin_sinks, config_context, raw_case_config)
             except Exception as e:
                 self._logger.error(f"Error executing plugin '{p_name}': {e}", exc_info=True)
                 # Re-raise to halt pipeline execution
@@ -209,7 +215,7 @@ class PipelineRunner:
     def _execute_single_plugin(self, plugin_name: str, step_config: Dict[str, Any], 
                               plugin_sources: Dict[str, Dict[str, DataSource]], 
                               plugin_sinks: Dict[str, Dict[str, DataSink]], 
-                              config_manager: ConfigManager, raw_case_config: dict) -> None:
+                              config_context: Dict[str, Any], raw_case_config: dict) -> None:
         """
         Execute a single plugin with its configuration.
         
@@ -218,7 +224,7 @@ class PipelineRunner:
             step_config: Configuration for the pipeline step
             plugin_sources: Mapping of plugin names to their DataSource fields
             plugin_sinks: Mapping of plugin names to their DataSink fields
-            config_manager: ConfigManager instance
+            config_context: Configuration context dictionary
             raw_case_config: Raw case configuration
         """
         plugin_spec = PLUGIN_REGISTRY[plugin_name]
@@ -239,8 +245,10 @@ class PipelineRunner:
             return
 
         # Get and hydrate plugin configuration
-        config_dict = config_manager.get_plugin_config(
-            plugin_name=plugin_name, case_plugin_config=case_plugin_params
+        config_dict = get_plugin_configuration(
+            plugin_name=plugin_name,
+            case_plugin_config=case_plugin_params,
+            config_context=config_context
         )
 
         # Hydrate data sources for the plugin
@@ -272,26 +280,93 @@ class PipelineRunner:
             handle_exception(exc, error_context)
             raise exc
 
-        # Resolve output path if needed
-        resolved_output_path = self._resolve_output_path(plugin_name, plugin_sinks, raw_case_config)
+        # Resolve output path directly (simplified approach)
+        resolved_output_path = None
+        sinks_for_plugin = plugin_sinks.get(plugin_name, {})
+        if sinks_for_plugin:
+            if len(sinks_for_plugin) > 1:
+                self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks defined. Only one is supported for path injection. Using the first one found.")
+            
+            # Get the first sink and resolve its path
+            _sink_field, sink_marker = list(sinks_for_plugin.items())[0]
+            io_mapping = raw_case_config.get("io_mapping", {})
+            sink_config = io_mapping.get(sink_marker.name, {})
+            output_path_str = sink_config.get("path", "")
+            if output_path_str:
+                resolved_output_path = self._context.case_path / output_path_str
+            else:
+                self._logger.warning(f"DataSink '{sink_marker.name}' for plugin '{plugin_name}' has no path defined in io_mapping.")
 
-        # Execute the plugin
-        return_value = execute_plugin(
-            logger=self._logger,
-            plugin_name=plugin_name,
-            plugin_spec=plugin_spec,
-            config_object=config_object,
-            data_hub=self._context.data_hub,
-            case_path=self._context.case_path,
-            project_root=self._context.project_root,
-            resolved_output_path=resolved_output_path
+        # Execute the plugin directly (simplified approach)
+        plugin_context = PluginContext(
+            data_hub=self._context.data_hub, logger=self._logger,
+            project_root=self._context.project_root, case_path=self._context.case_path,
+            config=config_object,
+            output_path=resolved_output_path
         )
 
-        # Handle the plugin output
-        self._handle_plugin_output(plugin_name, return_value, plugin_sinks, raw_case_config)
+        try:
+            executor = PluginExecutor(plugin_spec, plugin_context)
+            return_value = executor.execute()
+        except Exception as e:
+            error_context = {
+                "plugin_name": plugin_name,
+                "plugin_spec": plugin_spec.name if plugin_spec else "Unknown"
+            }
+            exc = PluginError(
+                f"A critical error occurred in plugin '{plugin_name}'. Halting pipeline."
+            )
+            # Add context to the exception manually since RuntimeError doesn't accept it in constructor
+            if hasattr(exc, 'context'):
+                exc.context.update(error_context)
+            else:
+                exc.context = error_context
+            handle_exception(exc, error_context)
+            raise exc
+
+        # Handle plugin output directly (simplified approach)
+        if sinks_for_plugin:
+            if len(sinks_for_plugin) > 1:
+                self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks defined. Only one is supported per plugin. Using the first one found.")
+
+            # Get the first (and only) sink
+            sink_field, sink_marker = list(sinks_for_plugin.items())[0]
+
+            if return_value is None:
+                # This is now expected for plugins that write directly to disk
+                self._logger.debug(f"Plugin '{plugin_name}' has a DataSink for field '{sink_field}' but returned None.")
+            else:
+                self._logger.info(f"Plugin '{plugin_name}' produced output. Writing to sink: {sink_marker.name}")
+                try:
+                    # We need to resolve the path relative to the case directory
+                    # Get the io_mapping from case_config
+                    io_mapping = raw_case_config.get("io_mapping", {})
+                    sink_config = io_mapping.get(sink_marker.name, {})
+                    output_path_str = sink_config.get("path", "")
+                    output_path = self._context.case_path / output_path_str
+                    handler_args = sink_config.get("handler_args", sink_marker.handler_args)
+                    self._context.data_hub.save(
+                        data=return_value,
+                        path=output_path,
+                        handler_args=handler_args
+                    )
+                    self._logger.debug(f"Successfully wrote output to {output_path}")
+                except Exception as e:
+                    error_context = {
+                        "plugin_name": plugin_name,
+                        "sink_name": sink_marker.name if sink_marker else "Unknown",
+                        "output_path": str(output_path) if 'output_path' in locals() else "Unknown"
+                    }
+                    exc = NexusError(
+                        f"Failed to write output for plugin '{plugin_name}' to {sink_marker.name if sink_marker else 'Unknown'}: {e}",
+                        context=error_context,
+                        cause=e
+                    )
+                    handle_exception(exc, error_context)
+                    raise exc
 
     def _resolve_output_path(self, plugin_name: str, plugin_sinks: Dict[str, Dict[str, DataSink]], 
-                           raw_case_config: dict) -> Path | None:
+                             raw_case_config: dict) -> Path | None:
         """
         Resolve the output path for a plugin based on its DataSinks.
         
@@ -303,32 +378,30 @@ class PipelineRunner:
         Returns:
             Resolved output path or None
         """
-        resolved_output_path = None
-        sinks_for_plugin = plugin_sinks.get(plugin_name, {})
-        
-        if sinks_for_plugin:
-            if len(sinks_for_plugin) > 1:
-                self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks defined. Only one is supported for path injection. Using the first one found.")
+        # Simple, direct approach
+        sinks = plugin_sinks.get(plugin_name, {})
+        if not sinks:
+            return None
             
-            # Get the first (and only) sink
-            _sink_field, sink_marker = list(sinks_for_plugin.items())[0]
+        # Warn if multiple sinks but only use first
+        if len(sinks) > 1:
+            self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks. Using first one.")
+        
+        # Get first sink and resolve path
+        _, sink = list(sinks.items())[0]
+        io_mapping = raw_case_config.get("io_mapping", {})
+        config = io_mapping.get(sink.name, {})
+        path_str = config.get("path")
+        
+        if path_str:
+            return self._context.case_path / path_str
+        return None
 
-            # Resolve the path
-            io_mapping = raw_case_config.get("io_mapping", {})
-            sink_config = io_mapping.get(sink_marker.name, {})
-            output_path_str = sink_config.get("path", "")
-            if output_path_str:
-                resolved_output_path = self._context.case_path / output_path_str
-            else:
-                self._logger.warning(f"DataSink '{sink_marker.name}' for plugin '{plugin_name}' has no path defined in io_mapping.")
-
-        return resolved_output_path
-
-    def _handle_plugin_output(self, plugin_name: str, return_value: Any, 
-                             plugin_sinks: Dict[str, Dict[str, DataSink]], 
+    def _handle_plugin_output(self, plugin_name: str, return_value: Any,
+                             plugin_sinks: Dict[str, Dict[str, DataSink]],
                              raw_case_config: dict) -> None:
         """
-        Handle the output from a plugin execution.
+        Handle plugin output by delegating to functional implementation.
         
         Args:
             plugin_name: Name of the plugin
@@ -336,13 +409,13 @@ class PipelineRunner:
             plugin_sinks: Mapping of plugin names to their DataSink fields
             raw_case_config: Raw case configuration
         """
-        sinks_for_plugin = plugin_sinks.get(plugin_name, {})
-        
+        # Simple delegation
+        sinks = plugin_sinks.get(plugin_name, {})
         handle_plugin_output(
             logger=self._logger,
             plugin_name=plugin_name,
             return_value=return_value,
-            sinks_for_plugin=sinks_for_plugin,
+            sinks_for_plugin=sinks,
             raw_case_config=raw_case_config,
             case_path=self._context.case_path,
             data_hub=self._context.data_hub
