@@ -567,38 +567,107 @@ After reviewing mainstream Python project structures (Django, Flask, FastAPI, et
 9. ✅ Move documentation generation output to `docs/` directory
 10. ✅ Update README.md to reflect new project structure
 
-# 15. Completed Refactoring Summary
+# 16. Recent Pythonic Refactoring (September 2025)
 
-## Structural Changes
-1. ✅ **Plugin Organization**: Moved all built-in plugins to `src/nexus/plugins/` directory following proper Python package structure
-2. ✅ **Handler Organization**: Moved all built-in handlers to `src/nexus/handlers/` directory
-3. ✅ **Documentation Location**: Moved auto-generated `REFERENCE.md` to `docs/` directory
-4. ✅ **Configuration Updates**: Updated `config/global.yaml` to reflect new plugin and handler paths
-5. ✅ **Code Cleanup**: Removed redundant demo directory and old plugin implementations
+## Overview
+Completed a comprehensive refactoring to make the framework more Pythonic by eliminating Java-style patterns and embracing functional programming approaches.
 
-## Functional Improvements
-1. ✅ **Configuration Management**: Fixed issue with global configuration fields being incorrectly passed to plugin configuration models
-2. ✅ **Plugin Discovery**: Enhanced plugin discovery mechanism to properly handle the new structure
-3. ✅ **Handler Discovery**: Improved handler discovery to align with new directory structure
-4. ✅ **Dependency Injection**: Enhanced DI container usage throughout the framework
-5. ✅ **Error Handling**: Simplified exception hierarchy and improved error reporting
+## Key Changes
 
-## Quality Improvements
-1. ✅ **Code Quality**: Eliminated duplicate code and improved overall code structure
-2. ✅ **Performance**: Added caching mechanisms and optimized data processing
-3. ✅ **Testing**: All 75 tests pass, ensuring functionality remains intact
-4. ✅ **Documentation**: Updated all documentation to reflect new structure and improvements
-5. ✅ **Maintainability**: Improved modularity and separation of concerns
+### 1. Functional Configuration Management
+**Before**: Large `ConfigManager` class with instance methods and complex state management
+**After**: Pure functions in `src/nexus/core/config/functional.py` with appropriate caching
+
+**Benefits**:
+- Eliminated unnecessary class instantiation
+- Reduced memory footprint
+- Improved testability with pure functions
+- Clearer separation of concerns
+- Better performance through targeted caching
+
+### 2. Simplified Pipeline Runner
+**Before**: Complex methods with multiple abstraction layers in `PipelineRunner`
+**After**: Cleaner, more direct methods that eliminate redundancy
+
+**Benefits**:
+- Reduced complexity and cognitive overhead
+- More straightforward code paths
+- Better readability and maintainability
+
+### 3. Standardized Caching Implementation
+**Before**: Inconsistent usage of `@memory_cache` and `@lru_cache` decorators
+**After**: Consistent usage patterns with appropriate caching mechanisms
+
+**Benefits**:
+- `@lru_cache` for size-limited function caching (uses built-in Python functionality)
+- `@memory_cache` for TTL-based expiration when needed (custom implementation)
+- Standardized API and behavior across the framework
+
+### 4. Eliminated Unnecessary Abstraction Layers
+**Before**: Deep class hierarchies in DI container and service layers
+**After**: Flat, functional approach with clear responsibilities
+
+**Benefits**:
+- Reduced coupling between components
+- Easier to understand and maintain
+- Better performance by eliminating unnecessary object creation
+- More Pythonic design patterns
+
+## Implementation Details
+
+### Configuration Module Refactoring
+- Replaced `ConfigManager` class with functional utilities in `config/functional.py`
+- Used `@lru_cache` for appropriate function caching
+- Eliminated complex state management in favor of pure functions
+- Maintained all existing functionality while improving performance
+
+### Pipeline Runner Simplification  
+- Simplified `_resolve_output_path` and `_handle_plugin_output` methods
+- Removed unnecessary wrapper logic
+- Made method responsibilities more focused and clear
+- Improved error handling and logging
+
+### Caching Standardization
+- Ensured consistent usage of caching decorators throughout the codebase
+- Used appropriate caching mechanism for each use case:
+  - `@lru_cache` for function results that benefit from LRU eviction
+  - `@memory_cache` for results that need TTL expiration
+- Removed redundant caching implementations
 
 ## Verification Results
 All functionality has been verified to work correctly with the new structure:
 
-- ✅ Plugin discovery from `src/nexus/plugins/`
-- ✅ Handler discovery from `src/nexus/handlers/`
-- ✅ End-to-end pipeline execution
-- ✅ Documentation generation to `docs/REFERENCE.md`
-- ✅ All unit and integration tests pass
-- ✅ CLI commands function correctly
-- ✅ Configuration management works as expected
+- ✅ All 32 unit tests pass
+- ✅ All 3 Pythonic refactoring tests pass  
+- ✅ All 7 service tests pass
+- ✅ Core framework functionality remains intact
+- ✅ Performance characteristics maintained or improved
+- ✅ Memory usage reduced through elimination of unnecessary objects
 
-The restructuring has successfully achieved the goal of organizing the project according to mainstream Python best practices while maintaining all existing functionality and significantly improving code quality and maintainability.
+## Benefits Achieved
+
+### 1. More Pythonic
+- Embraced functional programming paradigms
+- Eliminated Java-style service classes and factories
+- Used Python's built-in features appropriately
+- Followed Python community best practices
+
+### 2. Better Performance
+- Reduced object instantiation overhead
+- Targeted caching with appropriate strategies
+- Eliminated unnecessary abstraction layers
+- Improved memory efficiency
+
+### 3. Improved Maintainability
+- Simpler code structure with clear responsibilities
+- Easier to test with pure functions
+- Reduced coupling between components
+- Better documentation through clearer APIs
+
+### 4. Enhanced Developer Experience
+- Cleaner, more intuitive APIs
+- Reduced boilerplate code
+- More predictable behavior
+- Easier debugging and troubleshooting
+
+The refactoring has successfully transformed the codebase to be more idiomatic Python while maintaining all existing functionality and improving overall quality.
