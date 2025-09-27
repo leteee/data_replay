@@ -1,8 +1,36 @@
+# Global configuration for the Nexus Framework
+# This file defines the default settings for all framework operations.
+
+# Root directory for case files
 cases_root: "./cases"
+
+# Logging configuration
 log_level: "INFO"
+log_path: "./logs"
 log_file: "./logs/app.log"
+
+# Plugin configuration
 plugin_enable: True
 plugin_modules:
   - nexus.plugins
-handler_paths:
-  - "./src/nexus/handlers"
+
+# Handler configuration - specify paths where data handlers can be found
+# Handlers can be discovered from either modules or file paths
+#
+# === Main approach (recommended) ===
+# Module-based handler discovery - handlers are discovered from Python packages
+handler_modules:
+  - nexus.handlers
+
+# === Alternative approaches (commented out) ===
+# Path-based handler discovery - handlers are discovered from file system paths
+# handler_paths:
+#   - "./src/nexus/handlers"           # Relative path from project root
+#   - "/absolute/path/to/handlers"     # Absolute path
+#   - "./custom_handlers"              # Custom handlers directory
+
+# Legacy configuration - kept for backward compatibility
+# plugin_paths:
+#   - "./src/nexus/plugins"
+# handler_paths:
+#   - "./src/nexus/handlers"

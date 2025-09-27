@@ -6,7 +6,9 @@ from logging import Logger
 from pathlib import Path
 from typing import List
 
-def discover_handlers(logger: Logger, project_root: Path = None, additional_paths: List[str] = None) -> None:
+def discover_handlers(logger: Logger, project_root: Path = None, 
+                    handler_modules: List[str] = None, 
+                    handler_paths: List[str] = None) -> None:
     """
     Scans the current package to find and import all modules,
     which triggers the @handler decorators to register themselves.
@@ -15,8 +17,8 @@ def discover_handlers(logger: Logger, project_root: Path = None, additional_path
     
     # Add additional paths to sys.path if provided
     paths_added = []
-    if additional_paths and project_root:
-        for path_str in additional_paths:
+    if handler_paths and project_root:
+        for path_str in handler_paths:
             # Resolve relative paths against project root
             if not Path(path_str).is_absolute():
                 path = (project_root / path_str).resolve()
@@ -29,26 +31,19 @@ def discover_handlers(logger: Logger, project_root: Path = None, additional_path
                 paths_added.append(str(path))
                 logger.debug(f"Added handler path to sys.path: {path}")
     
-    # Discover built-in handlers
-    package_path = Path(__file__).parent
-    package_name = package_path.name
-    
-    for _, module_name, _ in pkgutil.iter_modules([str(package_path)]):
-        # Skip base, decorator, and discovery modules
-        if module_name in ['base', 'decorator', 'discovery', '__init__']:
-            continue
-        
+    # Discover built-in handlers from handler_modules
+    handler_modules = handler_modules or []
+    for module_name in handler_modules:
         try:
-            # The package is nexus.handlers
-            full_module_name = f"nexus.handlers.{module_name}"
-            importlib.import_module(full_module_name)
+            # Import the entire handler module which will trigger registration
+            importlib.import_module(module_name)
             logger.debug(f"Successfully imported handler module: {module_name}")
         except Exception as e:
             logger.error(f"Failed to import handler module {module_name}: {e}", exc_info=True)
     
-    # Discover additional handlers from additional_paths
+    # Discover additional handlers from handler_paths
     try:
-        for path_str in (additional_paths or []):
+        for path_str in (handler_paths or []):
             # Resolve relative paths against project root
             if not Path(path_str).is_absolute():
                 path = (project_root / path_str).resolve() if project_root else Path(path_str).resolve()

@@ -85,6 +85,7 @@ def load_environment_config() -> Dict[str, Any]:
         "PLUGIN_ENABLE": "plugin_enable",
         "PLUGIN_MODULES": "plugin_modules",
         "PLUGIN_PATHS": "plugin_paths",
+        "HANDLER_MODULES": "handler_modules",
         "HANDLER_PATHS": "handler_paths"
     }
 
@@ -93,7 +94,7 @@ def load_environment_config() -> Dict[str, Any]:
         if value is not None:
             if config_key in ["plugin_enable"]:
                 env_config[config_key] = value.lower() in ["true", "1", "yes", "on"]
-            elif config_key in ["plugin_modules", "plugin_paths", "handler_paths"]:
+            elif config_key in ["plugin_modules", "plugin_paths", "handler_modules", "handler_paths"]:
                 env_config[config_key] = [item.strip() for item in value.split(",") if item.strip()]
             else:
                 env_config[config_key] = value

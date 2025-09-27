@@ -37,10 +37,11 @@ def get_handler(path: Path, handler_name: Optional[str] = None) -> DataHandler:
     if not _handlers_discovered:
         # This check ensures that discovery only runs once per process.
         project_root = _discovery_context.project_root if _discovery_context else None
-        handler_paths = _discovery_context.run_config.get("handler_paths", []) if _discovery_context else []
+        handler_modules = _discovery_context.run_config.get("handler_modules", ["nexus.handlers"]) if _discovery_context else []
+        handler_paths = _discovery_context.run_config.get("handler_paths", ["./src/nexus/handlers"]) if _discovery_context else []
         # Use the discovery mechanism from nexus.handlers
         from ....handlers.discovery import discover_handlers
-        discover_handlers(logger, project_root, handler_paths)
+        discover_handlers(logger, project_root, handler_modules, handler_paths)
         _handlers_discovered = True
 
     handler_cls: Optional[Type[DataHandler]] = None

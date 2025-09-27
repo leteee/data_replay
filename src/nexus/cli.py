@@ -134,6 +134,7 @@ def pipeline(
         "cli_args": {},
         "plugin_modules": global_config.get("plugin_modules", []),
         "plugin_paths": global_config.get("plugin_paths", ["./src/nexus/plugins"]),
+        "handler_modules": global_config.get("handler_modules", ["nexus.handlers"]),
         "handler_paths": global_config.get("handler_paths", ["./src/nexus/handlers"])
     }
 
