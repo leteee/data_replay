@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List
 from functools import lru_cache
-import json
 
 from .functional import load_yaml, create_configuration_context, get_data_sources, get_plugin_config
 from ..plugin.decorator import PLUGIN_REGISTRY
@@ -92,17 +91,16 @@ def get_merged_data_sources(config_context: Dict[str, Any]) -> dict:
     Returns:
         Merged data sources dictionary
     """
-    # Create hashable representations for caching
-    discovered_sources_hash = json.dumps(config_context["discovered_data_sources"], sort_keys=True)
-    global_config_hash = json.dumps(config_context["global_config"], sort_keys=True)
-    case_config_hash = json.dumps(config_context["case_config"], sort_keys=True)
+    # Direct approach without unnecessary JSON serialization for caching
+    # Simply pass parameters directly to the functional implementation
+    from .functional import merge_all_data_sources
     
-    return get_data_sources(
-        discovered_sources_hash=discovered_sources_hash,
-        global_config_hash=global_config_hash,
-        case_config_hash=case_config_hash,
-        case_path_str=str(config_context["case_path"]),
-        project_root_str=str(config_context["project_root"])
+    return merge_all_data_sources(
+        discovered_sources=config_context["discovered_data_sources"],
+        global_config=config_context["global_config"],
+        case_config=config_context["case_config"],
+        case_path=config_context["case_path"],
+        project_root=config_context["project_root"]
     )
 
 

@@ -107,10 +107,10 @@ class PipelineRunner:
 
         # Step 2: Discover dependencies and prepare environment
         discovered_sources, plugin_sources, plugin_sinks = self._discover_dependencies(pipeline_steps, raw_case_config)
-        config_manager = self._prepare_environment(discovered_sources)
+        config_context = self._prepare_environment(discovered_sources)
         
         # Step 3: Execute plugins
-        self._execute_pipeline(pipeline_steps, plugin_sources, plugin_sinks, config_manager, raw_case_config)
+        self._execute_pipeline(pipeline_steps, plugin_sources, plugin_sinks, config_context, raw_case_config)
         
         # Step 4: Finalize
         self._logger.info("Pipeline run finished successfully.")
@@ -244,14 +244,13 @@ class PipelineRunner:
             executor.execute()  # No return value to handle
             return
 
-        # Get and hydrate plugin configuration
+        # --- 1. Get and hydrate plugin configuration ---
         config_dict = get_plugin_configuration(
             plugin_name=plugin_name,
             case_plugin_config=case_plugin_params,
             config_context=config_context
         )
 
-        # Hydrate data sources for the plugin
         hydrated_dict = config_dict.copy()
         sources_for_plugin = plugin_sources.get(plugin_name, {})
         for field_name, source_marker in sources_for_plugin.items():
@@ -260,7 +259,7 @@ class PipelineRunner:
             self._logger.debug(f"Hydrating field '{field_name}' with data source '{name}'.")
             hydrated_dict[field_name] = self._context.data_hub.get(name)
 
-        # Validate and instantiate the Pydantic model
+        # --- 2. Validate and instantiate Pydantic model ---
         try:
             config_object = plugin_spec.config_model(**hydrated_dict)
             self._logger.debug(f"Successfully created config object for {plugin_name}")
@@ -280,24 +279,10 @@ class PipelineRunner:
             handle_exception(exc, error_context)
             raise exc
 
-        # Resolve output path directly (simplified approach)
-        resolved_output_path = None
-        sinks_for_plugin = plugin_sinks.get(plugin_name, {})
-        if sinks_for_plugin:
-            if len(sinks_for_plugin) > 1:
-                self._logger.warning(f"Plugin '{plugin_name}' has multiple DataSinks defined. Only one is supported for path injection. Using the first one found.")
-            
-            # Get the first sink and resolve its path
-            _sink_field, sink_marker = list(sinks_for_plugin.items())[0]
-            io_mapping = raw_case_config.get("io_mapping", {})
-            sink_config = io_mapping.get(sink_marker.name, {})
-            output_path_str = sink_config.get("path", "")
-            if output_path_str:
-                resolved_output_path = self._context.case_path / output_path_str
-            else:
-                self._logger.warning(f"DataSink '{sink_marker.name}' for plugin '{plugin_name}' has no path defined in io_mapping.")
+        # --- 3. Resolve output path if needed ---
+        resolved_output_path = self._resolve_output_path(plugin_name, plugin_sinks, raw_case_config)
 
-        # Execute the plugin
+        # --- 4. Execute the plugin ---
         return_value = execute_plugin(
             logger=self._logger,
             plugin_name=plugin_name,
@@ -309,16 +294,8 @@ class PipelineRunner:
             resolved_output_path=resolved_output_path
         )
 
-        # Handle the plugin output
-        handle_plugin_output(
-            logger=self._logger,
-            plugin_name=plugin_name,
-            return_value=return_value,
-            sinks_for_plugin=sinks_for_plugin,
-            raw_case_config=raw_case_config,
-            case_path=self._context.case_path,
-            data_hub=self._context.data_hub
-        )
+        # --- 5. Handle plugin output ---
+        self._handle_plugin_output(plugin_name, return_value, plugin_sinks, raw_case_config)
 
     def _resolve_output_path(self, plugin_name: str, plugin_sinks: Dict[str, Dict[str, DataSink]], 
                              raw_case_config: dict) -> Path | None:

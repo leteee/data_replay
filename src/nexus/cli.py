@@ -15,7 +15,7 @@ if str(project_root / "src") not in sys.path:
 from nexus.core.pipeline_runner import PipelineRunner
 from nexus.core.data.hub import DataHub
 from nexus.core.context import NexusContext
-from nexus.core.config.manager import ConfigManager, load_yaml
+from nexus.core.config.functional import load_yaml
 from nexus.scripts.demo_data import generate_data
 from nexus.scripts.docgen import generate_plugin_documentation
 from nexus.core.logger import initialize_logging
